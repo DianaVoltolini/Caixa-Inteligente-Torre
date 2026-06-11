@@ -1,0 +1,60 @@
+/* src/app/globals.css */
+
+@import "tailwindcss";
+
+:root {
+  --ci-primary: #002198;
+  --ci-primary-hover: #00166f;
+  --ci-primary-soft: #eef3ff;
+
+  --ci-bg: #f8fbff;
+  --ci-card: #ffffff;
+  --ci-border: #dfe7f7;
+  --ci-border-soft: #e8eefc;
+
+  --ci-text: #000000;
+  --ci-muted: #64748b;
+
+  --ci-sidebar-width: 256px;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: var(--ci-bg);
+  color: var(--ci-text);
+}
+
+/* Utilitários oficiais do Caixa Inteligente */
+
+.bg-ci-primary {
+  background-color: var(--ci-primary);
+}
+
+.bg-ci-soft {
+  background-color: var(--ci-primary-soft);
+}
+
+.bg-ci-page {
+  background-color: var(--ci-bg);
+}
+
+.text-ci-primary {
+  color: var(--ci-primary);
+}
+
+.text-ci-muted {
+  color: var(--ci-muted);
+}
+
+.border-ci {
+  border-color: var(--ci-border);
+}
+
+.border-ci-soft {
+  border-color: var(--ci-border-soft);
+}

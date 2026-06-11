@@ -1,0 +1,427 @@
+Listagem de caminhos de pasta
+O número de série do volume é 9882-DD01
+C:\USERS\DIANA VOLTOLINI\DOCUMENTS\APLICATIVO SAAS\CAIXA INTELIGENTE\SRC
+¦   page.tsx
+¦   
++---app
+¦   ¦   globals.css
+¦   ¦   layout.tsx
+¦   ¦   
+¦   +---(master)
+¦   ¦   ¦   layout.tsx
+¦   ¦   ¦   
+¦   ¦   +---torre-controle
+¦   ¦       ¦   page.tsx
+¦   ¦       ¦   
+¦   ¦       +---assinaturas
+¦   ¦       ¦       page.tsx
+¦   ¦       ¦       
+¦   ¦       +---leads
+¦   ¦       ¦       page.tsx
+¦   ¦       ¦       
+¦   ¦       +---logs
+¦   ¦       ¦       page.tsx
+¦   ¦       ¦       
+¦   ¦       +---usuarios-master
+¦   ¦               page.tsx
+¦   ¦               
+¦   +---(private)
+¦   ¦   ¦   layout.tsx
+¦   ¦   ¦   layout_old.tsx
+¦   ¦   ¦   
+¦   ¦   +---analytics
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       
+¦   ¦   +---assinaturas
+¦   ¦   ¦   ¦   page.tsx
+¦   ¦   ¦   ¦   page_old.tsx
+¦   ¦   ¦   ¦   
+¦   ¦   ¦   +---pagamento
+¦   ¦   ¦           page.tsx
+¦   ¦   ¦           
+¦   ¦   +---cadastros
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       page_old.tsx
+¦   ¦   ¦       
+¦   ¦   +---configuracoes
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       page_old.tsx
+¦   ¦   ¦       
+¦   ¦   +---dashboard
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       page_old.tsx
+¦   ¦   ¦       
+¦   ¦   +---lancamentos
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       page_old.tsx
+¦   ¦   ¦       
+¦   ¦   +---relatorios
+¦   ¦           page.tsx
+¦   ¦           page_old.tsx
+¦   ¦           
+¦   +---(protected)
+¦   ¦   +---billing
+¦   ¦           page.tsx
+¦   ¦           
+¦   +---(public)
+¦   ¦   +---desafio
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       
+¦   ¦   +---login
+¦   ¦   ¦       page.tsx
+¦   ¦   ¦       page_old.tsx
+¦   ¦   ¦       
+¦   ¦   +---signup
+¦   ¦           page.tsx
+¦   ¦           page_old.tsx
+¦   ¦           
+¦   +---api
+¦       +---account
+¦       ¦   +---delete
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---provision
+¦       ¦           route.ts
+¦       ¦           
+¦       +---asaas
+¦       ¦   +---create-subscription
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---webhook
+¦       ¦           route.ts
+¦       ¦           
+¦       +---auth
+¦       ¦   +---login
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---logout
+¦       ¦           route.ts
+¦       ¦           
+¦       +---bling
+¦       ¦   +---callback
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---connect
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---get-financial-accounts
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---get-payment-methods
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---get-revenue-categories
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---ping
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---sync-contact
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---test-charge
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---test-contact
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---test-receive
+¦       ¦           route.ts
+¦       ¦           
+¦       +---internal
+¦       ¦   +---bling
+¦       ¦           route.ts
+¦       ¦           
+¦       +---leads
+¦       ¦   +---desafio
+¦       ¦           route.ts
+¦       ¦           
+¦       +---subscription
+¦       ¦   +---create-charge
+¦       ¦   ¦       route.ts
+¦       ¦   ¦       
+¦       ¦   +---current-charge
+¦       ¦           route.ts
+¦       ¦           
+¦       +---test-bling-connect
+¦       ¦       route.ts
+¦       ¦       
+¦       +---test-charge-details
+¦       ¦       route.ts
+¦       ¦       
+¦       +---test-financial-accounts
+¦       ¦       route.ts
+¦       ¦       
+¦       +---test-revenue-categories
+¦               route.ts
+¦               
++---components
+¦   +---layout
+¦   ¦       AppHeader.tsx
+¦   ¦       MasterSidebar.tsx
+¦   ¦       PageContainer.tsx
+¦   ¦       PageHeader.tsx
+¦   ¦       Sidebar.tsx
+¦   ¦       
+¦   +---onboarding
+¦   ¦       OnboardingModal_old.tsx
+¦   ¦       
+¦   +---premium
+¦   ¦       PremiumGuard.tsx
+¦   ¦       
+¦   +---selectors
+¦   ¦       SearchSelect.tsx
+¦   ¦       SelectCategoria.tsx
+¦   ¦       SelectCliente.tsx
+¦   ¦       SelectFornecedor.tsx
+¦   ¦       SelectServico.tsx
+¦   ¦       
+¦   +---settings
+¦   ¦       DeleteAccountModal_old.tsx
+¦   ¦       
+¦   +---subscription
+¦   ¦       TrialBanner.tsx
+¦   ¦       TrialProgressWidget.tsx
+¦   ¦       
+¦   +---ui
+¦           AlertBanner.tsx
+¦           Badge.tsx
+¦           Button.tsx
+¦           Card.tsx
+¦           EmptyState.tsx
+¦           FormCheckbox.tsx
+¦           FormField.tsx
+¦           FormInput.tsx
+¦           FormSelect.tsx
+¦           FormTextarea.tsx
+¦           IconButton.tsx
+¦           index.ts
+¦           index.tsx
+¦           Input.tsx
+¦           KPI.tsx
+¦           Modal.tsx
+¦           ModalActions.tsx
+¦           ModalPortal.tsx
+¦           SectionGrid.tsx
+¦           Select.tsx
+¦           StrategicBlock.tsx
+¦           TableCard.tsx
+¦           
++---contexts
+¦       AccountContext.tsx
+¦       AccountContext_old.tsx
+¦       BusinessContext.tsx
+¦       BusinessContext_old.tsx
+¦       
++---features
+¦   +---analytics
+¦   ¦   ¦   index.ts
+¦   ¦   ¦   
+¦   ¦   +---hooks
+¦   ¦   ¦       useAnalytics.ts
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   ¦           analytics.service.ts
+¦   ¦           
+¦   +---billing
+¦   ¦   +---services
+¦   ¦           create-platform-charge.service.ts
+¦   ¦           get-charges.service.ts
+¦   ¦           save-charge.service.ts
+¦   ¦           
+¦   +---cadastros
+¦   ¦   ¦   index.ts
+¦   ¦   ¦   
+¦   ¦   +---components
+¦   ¦   ¦       CadastrosCards.tsx
+¦   ¦   ¦       CadastrosList.tsx
+¦   ¦   ¦       CadastrosList_old.tsx
+¦   ¦   ¦       CategoriaModal.tsx
+¦   ¦   ¦       ContatoModal.tsx
+¦   ¦   ¦       ServicoModal.tsx
+¦   ¦   ¦       
+¦   ¦   +---hooks
+¦   ¦   ¦       useCadastros.ts
+¦   ¦   ¦       useCategorias.ts
+¦   ¦   ¦       useContatos.ts
+¦   ¦   ¦       useServicos.ts
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   ¦           cadastros.service.ts
+¦   ¦           
+¦   +---configuracoes
+¦   ¦   ¦   index.ts
+¦   ¦   ¦   
+¦   ¦   +---components
+¦   ¦   ¦       DeleteAccountModal.tsx
+¦   ¦   ¦       InfoItem.tsx
+¦   ¦   ¦       PerfilCard.tsx
+¦   ¦   ¦       
+¦   ¦   +---hooks
+¦   ¦   ¦       useConfiguracoes.ts
+¦   ¦   ¦       usePerfil.ts
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   ¦           updateBusinessProfile.ts
+¦   ¦           
+¦   +---dashboard
+¦   ¦   ¦   index.ts
+¦   ¦   ¦   
+¦   ¦   +---components
+¦   ¦   ¦       ActionCard.tsx
+¦   ¦   ¦       HeroResultCard.tsx
+¦   ¦   ¦       InsightCard.tsx
+¦   ¦   ¦       MiniMetric.tsx
+¦   ¦   ¦       
+¦   ¦   +---domain
+¦   ¦   ¦       dashboard.metrics.ts
+¦   ¦   ¦       
+¦   ¦   +---hooks
+¦   ¦   ¦       useDashboard.ts
+¦   ¦   ¦       useDashboard_old.ts
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   ¦           dashboard.service.ts
+¦   ¦           
+¦   +---lancamentos
+¦   ¦   +---components
+¦   ¦   ¦       LancamentoDespesaModal.tsx
+¦   ¦   ¦       LancamentoReceitaModal.tsx
+¦   ¦   ¦       LancamentosFilters.tsx
+¦   ¦   ¦       LancamentosList.tsx
+¦   ¦   ¦       LancamentosResumoCards.tsx
+¦   ¦   ¦       ServicoSelect.tsx
+¦   ¦   ¦       ServicosSelecionados.tsx
+¦   ¦   ¦       
+¦   ¦   +---hooks
+¦   ¦   ¦       useLancamentos.ts
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   +---leads
+¦   ¦   +---services
+¦   ¦           createChallengeLead.ts
+¦   ¦           
+¦   +---relatorios
+¦   ¦   +---components
+¦   ¦   ¦       RelatorioCategoriasTabela.tsx
+¦   ¦   ¦       RelatorioClientesTabela.tsx
+¦   ¦   ¦       RelatorioFluxoTabela.tsx
+¦   ¦   ¦       RelatorioFornecedoresTabela.tsx
+¦   ¦   ¦       RelatorioServicosTabela.tsx
+¦   ¦   ¦       RelatoriosFiltros.tsx
+¦   ¦   ¦       RelatorioTabela.tsx
+¦   ¦   ¦       
+¦   ¦   +---hooks
+¦   ¦   ¦       useRelatorio.ts
+¦   ¦   ¦       useRelatorioClientes.tsx
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   ¦           getRelatorioClientes.tsx
+¦   ¦           relatorio.service.ts
+¦   ¦           relatorio.service_old.tsx
+¦   ¦           
+¦   +---subscription
+¦   ¦   +---hooks
+¦   ¦   ¦       useSubscription.ts
+¦   ¦   ¦       
+¦   ¦   +---services
+¦   ¦           subscription.service.ts
+¦   ¦           
+¦   +---torre-controle
+¦       +---components
+¦       ¦       LeadDetailModal.tsx
+¦       ¦       LeadsFilters.tsx
+¦       ¦       LeadsTable.tsx
+¦       ¦       LeadStatusBadge.tsx
+¦       ¦       MasterUserStatusBadge.tsx
+¦       ¦       
+¦       +---hooks
+¦       ¦       useLeadsList.tsx
+¦       ¦       useMasterUsers.tsx
+¦       ¦       
+¦       +---services
+¦               leads.service.tsx
+¦               master-users.service.ts
+¦               
++---lib
+¦   ¦   billing-charge.repository.ts
+¦   ¦   formatters.ts
+¦   ¦   masks.ts
+¦   ¦   
+¦   +---asaas
+¦   ¦       client.ts
+¦   ¦       
+¦   +---auth
+¦   ¦       is-admin.ts
+¦   ¦       require-business.ts
+¦   ¦       signIn.ts
+¦   ¦       signUp.ts
+¦   ¦       
+¦   +---bling
+¦   ¦       auth.ts
+¦   ¦       charge.service.ts
+¦   ¦       client.ts
+¦   ¦       config.ts
+¦   ¦       contact.service.ts
+¦   ¦       contacts.ts
+¦   ¦       credentials.ts
+¦   ¦       errors.ts
+¦   ¦       index.ts
+¦   ¦       logs.ts
+¦   ¦       platform-integration.repository.ts
+¦   ¦       receive.service.ts
+¦   ¦       token-manager.ts
+¦   ¦       token-service.ts
+¦   ¦       types.ts
+¦   ¦       
+¦   +---db
+¦   ¦       business.ts
+¦   ¦       categories.ts
+¦   ¦       contacts.ts
+¦   ¦       dashboard.ts
+¦   ¦       db.ts
+¦   ¦       index.ts
+¦   ¦       profile.ts
+¦   ¦       services.ts
+¦   ¦       subscription.ts
+¦   ¦       tables.ts
+¦   ¦       transactions.ts
+¦   ¦       
+¦   +---services
+¦   ¦   +---assinaturas
+¦   ¦   ¦       assinatura-rules.ts
+¦   ¦   ¦       assinatura-service.ts
+¦   ¦   ¦       
+¦   ¦   +---bling
+¦   ¦   ¦       bling-contact-service.ts
+¦   ¦   ¦       
+¦   ¦   +---cobrancas
+¦   ¦           cobranca-servic.ts
+¦   ¦           
+¦   +---subscription
+¦   ¦       featureGate.ts
+¦   ¦       getSubscription.ts
+¦   ¦       
+¦   +---supabase
+¦   ¦       admin.ts
+¦   ¦       client.ts
+¦   ¦       ensureSession.ts
+¦   ¦       server.ts
+¦   ¦       
+¦   +---types
+¦           assinaturas.ts
+¦           
++---services
+¦   +---supabase
+¦           crudService.ts
+¦           queryHelpers.ts
+¦           
++---store
+¦       DashboardStore.tsx
+¦       UserPlanStore.tsx
+¦       
++---types
+        cadastro.ts
+        contact.ts
+        lancamentos.ts
+        
