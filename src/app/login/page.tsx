@@ -1,4 +1,4 @@
-// src/app/torre-controle/login/page.tsx
+// src/app/login/page.tsx
 
 "use client"
 
@@ -42,7 +42,7 @@ export default function TorreControleLoginPage() {
         return
       }
 
-      router.replace("/torre-controle")
+      router.replace("/painel")
     } catch {
       setError("Não foi possível acessar a Torre agora.")
     } finally {
@@ -71,6 +71,7 @@ export default function TorreControleLoginPage() {
             <label className="text-sm font-medium text-black">E-mail</label>
             <input
               type="email"
+              required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="seu@email.com"
@@ -82,6 +83,7 @@ export default function TorreControleLoginPage() {
             <label className="text-sm font-medium text-black">Senha</label>
             <input
               type="password"
+              required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Digite sua senha"
