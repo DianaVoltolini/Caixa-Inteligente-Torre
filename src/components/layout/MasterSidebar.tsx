@@ -1,40 +1,69 @@
-// src/components/layout/MasterSidebar.tsx
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\components\layout\MasterSidebar.tsx
 
 "use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Building2, LayoutDashboard, ShieldCheck, Users } from "lucide-react"
+import {
+  Building2,
+  CreditCard,
+  FileText,
+  LayoutDashboard,
+  Link2,
+  ScrollText,
+  ShieldCheck,
+  Users,
+} from "lucide-react"
 
 const items = [
   {
     label: "Visão geral",
-    href: "/torre-controle",
+    href: "/painel",
     icon: LayoutDashboard,
   },
   {
-    label: "Leads",
-    href: "/torre-controle/leads",
-    icon: Users,
+    label: "Cobranças",
+    href: "/cobrancas",
+    icon: CreditCard,
+  },
+  {
+    label: "Assinaturas",
+    href: "/assinaturas",
+    icon: FileText,
   },
   {
     label: "Central de clientes",
-    href: "/torre-controle/clientes",
+    href: "/clientes",
     icon: ShieldCheck,
   },
   {
+    label: "Leads",
+    href: "/leads",
+    icon: Users,
+  },
+  {
     label: "Consulta CNPJ",
-    href: "/torre-controle/consulta-cnpj",
+    href: "/consulta-cnpj",
     icon: Building2,
+  },
+  {
+    label: "Integração Bling",
+    href: "/integracoes/bling",
+    icon: Link2,
+  },
+  {
+    label: "Logs",
+    href: "/logs",
+    icon: ScrollText,
   },
 ]
 
 function isActivePath(pathname: string, href: string) {
-  if (href === "/torre-controle") {
-    return pathname === href
+  if (href === "/painel") {
+    return pathname === "/" || pathname === "/painel"
   }
 
-  return pathname.startsWith(href)
+  return pathname === href || pathname.startsWith(`${href}/`)
 }
 
 export function MasterSidebar() {
@@ -53,7 +82,8 @@ export function MasterSidebar() {
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-neutral-600">
-            Operação interna do SaaS, acompanhamento de leads e gestão da base.
+            Operação interna do SaaS, acompanhamento de clientes, assinaturas,
+            cobranças e integrações.
           </p>
         </div>
 
