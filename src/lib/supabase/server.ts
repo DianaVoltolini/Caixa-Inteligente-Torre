@@ -1,4 +1,4 @@
-// src/lib/supabase/server.ts
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\lib\supabase\server.ts
 
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
@@ -11,24 +11,20 @@ export async function createServerSupabaseClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
+        getAll() {
+          return cookieStore.getAll()
         },
-        set(name: string, value: string, options: any) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set({ name, value, ...options })
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
           } catch {
-            // Ignora erro em contextos onde escrita de cookie não é permitida
-          }
-        },
-        remove(name: string, options: any) {
-          try {
-            cookieStore.set({ name, value: "", ...options })
-          } catch {
-            // Ignora erro em contextos onde escrita de cookie não é permitida
+            // Em Server Components sem permissão de escrita, ignoramos.
+            // Em Route Handlers, os cookies são gravados normalmente.
           }
         },
       },
-    }
+    },
   )
 }

@@ -1,16 +1,10 @@
-// src/app/login/page.tsx
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\app\login\page.tsx
 
 "use client"
 
 import { FormEvent, useState } from "react"
-import { useRouter } from "next/navigation"
-
-import { createClient } from "@/lib/supabase/client"
 
 export default function TorreControleLoginPage() {
-  const router = useRouter()
-  const supabase = createClient()
-
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -23,26 +17,29 @@ export default function TorreControleLoginPage() {
     setLoading(true)
 
     try {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
+      const response = await fetch("/api/master/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+        }),
       })
 
-      if (loginError) {
-        setError("E-mail ou senha inválidos.")
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok || payload?.authorized !== true) {
+        setError(
+          payload?.error ||
+            "Este login não possui acesso autorizado à Torre de Controle.",
+        )
         return
       }
 
-      const response = await fetch("/api/master/auth/check")
-      const payload = await response.json()
-
-      if (!response.ok || !payload.authorized) {
-        await supabase.auth.signOut()
-        setError("Este login não possui acesso autorizado à Torre de Controle.")
-        return
-      }
-
-      router.replace("/painel")
+      window.location.href = "/painel"
     } catch {
       setError("Não foi possível acessar a Torre agora.")
     } finally {
@@ -69,6 +66,7 @@ export default function TorreControleLoginPage() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-black">E-mail</label>
+
             <input
               type="email"
               required
@@ -81,6 +79,7 @@ export default function TorreControleLoginPage() {
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-black">Senha</label>
+
             <input
               type="password"
               required
