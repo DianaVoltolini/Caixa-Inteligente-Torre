@@ -294,7 +294,7 @@ export default function CobrancasPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [search, setSearch] = useState("")
-  const [status, setStatus] = useState<StatusFilter>("todos")
+  const [status, setStatus] = useState<StatusFilter>("pending")
   const [syncingId, setSyncingId] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const [processorMessage, setProcessorMessage] = useState<string | null>(null)
@@ -436,7 +436,7 @@ export default function CobrancasPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Cobranças"
-          subtitle="Acompanhe cobranças abertas, vencidas, pagas, canceladas e falhas de sincronização com o Bling."
+          subtitle="A tela abre mostrando as cobranças em aberto. Use os filtros para consultar vencidas, pagas, canceladas ou histórico completo."
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
