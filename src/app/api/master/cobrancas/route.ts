@@ -57,6 +57,35 @@ type AssinaturaRow = {
   created_at: string | null
 }
 
+type CobrancaResponseItem = {
+  id: string
+  business_id: string
+  assinatura_id: string | null
+  cliente: string
+  responsavel: string | null
+  email_financeiro: string | null
+  whatsapp: string | null
+  assinatura_status: string | null
+  plano: string | null
+  forma_pagamento: string | null
+  proximo_vencimento: string | null
+  valor: number | null
+  vencimento: string | null
+  status: string | null
+  sync_status: string | null
+  sync_error: string | null
+  ciclo_tipo: string | null
+  competencia: string | null
+  created_at: string | null
+  pago_em: string | null
+  bling_cobranca_id: string | null
+  bling_numero_documento: string | null
+  bling_link_pagamento: string | null
+  bling_status_raw: string | null
+  ultima_consulta_bling_em: string | null
+  needs_action: boolean
+}
+
 function normalizeText(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -120,47 +149,47 @@ function getStatusFilter(request: NextRequest): StatusFilter {
 }
 
 function getLimit(request: NextRequest) {
-  const raw = Number(request.nextUrl.searchParams.get("limit") ?? 200)
+  const raw = Number(request.nextUrl.searchParams.get("limit") ?? 300)
 
-  if (!Number.isFinite(raw) || raw <= 0) return 200
+  if (!Number.isFinite(raw) || raw <= 0) return 300
 
   return Math.min(500, Math.floor(raw))
 }
 
-function matchesSearch(params: {
-  search: string
-  cobranca: CobrancaRow
-  business: BusinessRow | null
-  assinatura: AssinaturaRow | null
-}) {
-  if (!params.search) return true
-
-  const content = normalizeText([
-    params.business?.name,
-    params.business?.nome_responsavel,
-    params.business?.email_financeiro,
-    params.business?.whatsapp,
-    params.assinatura?.plano,
-    params.assinatura?.status,
-    params.cobranca.status,
-    params.cobranca.bling_cobranca_id,
-    params.cobranca.bling_numero_documento,
-    params.cobranca.competencia,
-  ].join(" "))
-
-  return content.includes(params.search)
-}
-
-function matchesStatusFilter(cobranca: CobrancaRow, status: StatusFilter) {
-  const normalized = normalizeStatus(cobranca.status)
+function matchesStatusFilter(item: CobrancaResponseItem, status: StatusFilter) {
+  const normalized = normalizeStatus(item.status)
 
   if (status === "todos") return true
-  if (status === "needs_action") return isNeedsAction(cobranca)
+  if (status === "needs_action") return item.needs_action
 
   return normalized === status
 }
 
-function getSummary(rows: CobrancaRow[]) {
+function matchesSearch(item: CobrancaResponseItem, search: string) {
+  if (!search) return true
+
+  const content = normalizeText([
+    item.cliente,
+    item.responsavel,
+    item.email_financeiro,
+    item.whatsapp,
+    item.assinatura_status,
+    item.plano,
+    item.forma_pagamento,
+    item.status,
+    item.sync_status,
+    item.sync_error,
+    item.ciclo_tipo,
+    item.competencia,
+    item.bling_cobranca_id,
+    item.bling_numero_documento,
+    item.bling_status_raw,
+  ].join(" "))
+
+  return content.includes(search)
+}
+
+function getSummary(rows: CobrancaResponseItem[]) {
   return rows.reduce(
     (summary, cobranca) => {
       const status = normalizeStatus(cobranca.status)
@@ -172,7 +201,7 @@ function getSummary(rows: CobrancaRow[]) {
       if (status === "paid") summary.paid += 1
       if (status === "error") summary.error += 1
       if (status === "canceled") summary.canceled += 1
-      if (isNeedsAction(cobranca)) summary.needsAction += 1
+      if (cobranca.needs_action) summary.needsAction += 1
 
       return summary
     },
@@ -231,9 +260,7 @@ export async function GET(request: NextRequest) {
       throw cobrancasError
     }
 
-    const cobrancasRows = ((cobrancas ?? []) as CobrancaRow[]).filter(
-      (cobranca) => matchesStatusFilter(cobranca, statusFilter),
-    )
+    const cobrancasRows = (cobrancas ?? []) as CobrancaRow[]
 
     const businessIds = Array.from(
       new Set(
@@ -290,94 +317,54 @@ export async function GET(request: NextRequest) {
       assinaturaMap.set(assinatura.id, assinatura)
     })
 
-    const data = cobrancasRows
-      .map((cobranca) => {
-        const business = businessMap.get(cobranca.business_id) ?? null
-        const assinatura = cobranca.assinatura_id
-          ? assinaturaMap.get(cobranca.assinatura_id) ?? null
-          : null
+    const enrichedRows: CobrancaResponseItem[] = cobrancasRows.map((cobranca) => {
+      const business = businessMap.get(cobranca.business_id) ?? null
+      const assinatura = cobranca.assinatura_id
+        ? assinaturaMap.get(cobranca.assinatura_id) ?? null
+        : null
 
-        return {
-          id: cobranca.id,
-          business_id: cobranca.business_id,
-          assinatura_id: cobranca.assinatura_id,
-          cliente: business?.name ?? "Cliente sem nome",
-          responsavel: business?.nome_responsavel ?? null,
-          email_financeiro: business?.email_financeiro ?? null,
-          whatsapp: business?.whatsapp ?? null,
-          assinatura_status: assinatura?.status ?? null,
-          plano: assinatura?.plano ?? null,
-          forma_pagamento: assinatura?.payment_method ?? null,
-          proximo_vencimento: assinatura?.proximo_vencimento ?? null,
-          valor: cobranca.valor,
-          vencimento: cobranca.vencimento,
-          status: cobranca.status,
-          sync_status: cobranca.sync_status,
-          sync_error: cobranca.sync_error,
-          ciclo_tipo: cobranca.ciclo_tipo,
-          competencia: cobranca.competencia,
-          created_at: cobranca.created_at,
-          pago_em: cobranca.pago_em,
-          bling_cobranca_id: cobranca.bling_cobranca_id,
-          bling_numero_documento: cobranca.bling_numero_documento,
-          bling_link_pagamento: cobranca.bling_link_pagamento,
-          bling_status_raw: cobranca.bling_status_raw,
-          ultima_consulta_bling_em: cobranca.ultima_consulta_bling_em,
-          needs_action: isNeedsAction(cobranca),
-        }
-      })
-      .filter((item) =>
-        matchesSearch({
-          search,
-          cobranca: {
-            id: item.id,
-            business_id: item.business_id,
-            assinatura_id: item.assinatura_id,
-            valor: item.valor,
-            vencimento: item.vencimento,
-            status: item.status,
-            sync_status: item.sync_status,
-            sync_error: item.sync_error,
-            ciclo_tipo: item.ciclo_tipo,
-            competencia: item.competencia,
-            created_at: item.created_at,
-            pago_em: item.pago_em,
-            bling_cobranca_id: item.bling_cobranca_id,
-            bling_numero_documento: item.bling_numero_documento,
-            bling_link_pagamento: item.bling_link_pagamento,
-            bling_status_raw: item.bling_status_raw,
-            ultima_consulta_bling_em: item.ultima_consulta_bling_em,
-            metadata: null,
-          },
-          business: {
-            id: item.business_id,
-            name: item.cliente,
-            nome_responsavel: item.responsavel,
-            email_financeiro: item.email_financeiro,
-            whatsapp: item.whatsapp,
-            created_at: null,
-          },
-          assinatura: item.assinatura_id
-            ? {
-                id: item.assinatura_id,
-                business_id: item.business_id,
-                status: item.assinatura_status,
-                plano: item.plano,
-                valor: null,
-                trial_started_at: null,
-                trial_ends_at: null,
-                proximo_vencimento: item.proximo_vencimento,
-                payment_method: item.forma_pagamento,
-                created_at: null,
-              }
-            : null,
-        }),
-      )
+      return {
+        id: cobranca.id,
+        business_id: cobranca.business_id,
+        assinatura_id: cobranca.assinatura_id,
+        cliente: business?.name ?? "Cliente sem nome",
+        responsavel: business?.nome_responsavel ?? null,
+        email_financeiro: business?.email_financeiro ?? null,
+        whatsapp: business?.whatsapp ?? null,
+        assinatura_status: assinatura?.status ?? null,
+        plano: assinatura?.plano ?? null,
+        forma_pagamento: assinatura?.payment_method ?? null,
+        proximo_vencimento: assinatura?.proximo_vencimento ?? null,
+        valor: cobranca.valor,
+        vencimento: cobranca.vencimento,
+        status: cobranca.status,
+        sync_status: cobranca.sync_status,
+        sync_error: cobranca.sync_error,
+        ciclo_tipo: cobranca.ciclo_tipo,
+        competencia: cobranca.competencia,
+        created_at: cobranca.created_at,
+        pago_em: cobranca.pago_em,
+        bling_cobranca_id: cobranca.bling_cobranca_id,
+        bling_numero_documento: cobranca.bling_numero_documento,
+        bling_link_pagamento: cobranca.bling_link_pagamento,
+        bling_status_raw: cobranca.bling_status_raw,
+        ultima_consulta_bling_em: cobranca.ultima_consulta_bling_em,
+        needs_action: isNeedsAction(cobranca),
+      }
+    })
+
+    const searchedRows = enrichedRows.filter((item) =>
+      matchesSearch(item, search),
+    )
+
+    const filteredRows = searchedRows.filter((item) =>
+      matchesStatusFilter(item, statusFilter),
+    )
 
     return NextResponse.json({
       ok: true,
-      summary: getSummary(cobrancasRows),
-      data,
+      summary: getSummary(searchedRows),
+      data: filteredRows,
     })
   } catch (error) {
     console.error("Erro ao carregar cobranças da Torre:", error)

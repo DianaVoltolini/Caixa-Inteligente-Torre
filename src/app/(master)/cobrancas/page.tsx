@@ -246,10 +246,14 @@ function SummaryCard({
   label,
   value,
   tone = "default",
+  active = false,
+  onClick,
 }: {
   label: string
   value: number
   tone?: "default" | "danger" | "success" | "warning"
+  active?: boolean
+  onClick: () => void
 }) {
   const className =
     tone === "danger"
@@ -270,10 +274,13 @@ function SummaryCard({
           : "text-black"
 
   return (
-    <Card
+    <button
+      type="button"
+      onClick={onClick}
       className={[
-        "rounded-[28px] p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]",
+        "rounded-[28px] p-5 text-left shadow-[0_18px_45px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_55px_rgba(15,23,42,0.08)]",
         className,
+        active ? "ring-2 ring-[#002198] ring-offset-2" : "",
       ].join(" ")}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
@@ -283,7 +290,7 @@ function SummaryCard({
       <p className={["mt-3 text-3xl font-bold", textClass].join(" ")}>
         {value}
       </p>
-    </Card>
+    </button>
   )
 }
 
@@ -436,31 +443,55 @@ export default function CobrancasPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Cobranças"
-          subtitle="A tela abre mostrando as cobranças em aberto. Use os filtros para consultar vencidas, pagas, canceladas ou histórico completo."
+          subtitle="A tela abre mostrando as cobranças em aberto. Os cards acima mostram a visão geral; clique em um card para filtrar a lista."
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <SummaryCard label="Total" value={summary.total} />
+          <SummaryCard
+            label="Total"
+            value={summary.total}
+            active={status === "todos"}
+            onClick={() => setStatus("todos")}
+          />
+
           <SummaryCard
             label="Abertas"
             value={summary.pending}
             tone="warning"
+            active={status === "pending"}
+            onClick={() => setStatus("pending")}
           />
+
           <SummaryCard
             label="Vencidas"
             value={summary.overdue}
             tone="danger"
+            active={status === "overdue"}
+            onClick={() => setStatus("overdue")}
           />
+
           <SummaryCard
             label="Pagas"
             value={summary.paid}
             tone="success"
+            active={status === "paid"}
+            onClick={() => setStatus("paid")}
           />
-          <SummaryCard label="Erros" value={summary.error} tone="danger" />
+
+          <SummaryCard
+            label="Erros"
+            value={summary.error}
+            tone="danger"
+            active={status === "error"}
+            onClick={() => setStatus("error")}
+          />
+
           <SummaryCard
             label="Ação manual"
             value={summary.needsAction}
             tone={summary.needsAction > 0 ? "danger" : "default"}
+            active={status === "needs_action"}
+            onClick={() => setStatus("needs_action")}
           />
         </div>
 
