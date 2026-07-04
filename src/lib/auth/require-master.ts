@@ -1,4 +1,4 @@
-// src/lib/auth/require-master.ts
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\lib\auth\require-master.ts
 
 import { redirect } from "next/navigation"
 
@@ -7,7 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 
 type MasterUser = {
   id: string
-  nome: string
+  nome: string | null
   email: string
   status: string
 }
@@ -21,7 +21,7 @@ export async function requireMasterUser(): Promise<MasterUser> {
   } = await supabase.auth.getUser()
 
   if (userError || !user?.email) {
-    redirect("/torre-controle/login")
+    redirect("/login")
   }
 
   const email = user.email.toLowerCase().trim()
@@ -34,8 +34,13 @@ export async function requireMasterUser(): Promise<MasterUser> {
     .maybeSingle()
 
   if (masterError || !masterUser) {
-    redirect("/torre-controle/login?error=unauthorized")
+    redirect("/login?error=unauthorized")
   }
 
-  return masterUser
+  return {
+    id: masterUser.id,
+    nome: masterUser.nome,
+    email: masterUser.email,
+    status: masterUser.status,
+  }
 }
