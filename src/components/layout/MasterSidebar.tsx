@@ -1,4 +1,4 @@
-// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\components\layout\MasterSidebar.tsx
+﻿// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\components\layout\MasterSidebar.tsx
 
 "use client"
 
