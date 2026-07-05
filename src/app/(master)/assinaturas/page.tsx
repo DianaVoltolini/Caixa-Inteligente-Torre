@@ -1,199 +1,153 @@
-// src/app/(master)/torre-controle/assinaturas/page.tsx
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\app\(master)\assinaturas\page.tsx
 
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+
+import PageContainer from "@/components/layout/PageContainer"
+import PageHeader from "@/components/layout/PageHeader"
+import { Card, Input } from "@/components/ui"
 
 type StatusFilter =
   | "todos"
+  | "attention"
   | "trialing"
+  | "trial_ended"
   | "active"
   | "awaiting_payment"
-  | "frozen"
+  | "grace_period"
+  | "overdue_or_blocked"
   | "canceled"
+  | "sem_assinatura"
 
-type MasterCliente = Record<string, unknown>
+type MasterCliente = {
+  business_id?: string | null
+  negocio?: string | null
+  name?: string | null
+  nome_responsavel?: string | null
+  email_financeiro?: string | null
+  whatsapp?: string | null
+  cliente_criado_em?: string | null
+
+  assinatura_id?: string | null
+  assinatura_status?: string | null
+  plano?: string | null
+  assinatura_valor?: number | null
+  trial_started_at?: string | null
+  trial_ends_at?: string | null
+  proximo_vencimento?: string | null
+  forma_pagamento?: string | null
+  assinatura_criada_em?: string | null
+
+  total_lancamentos?: number | null
+
+  cobranca_id?: string | null
+  cobranca_status?: string | null
+  cobranca_valor?: number | null
+  cobranca_vencimento?: string | null
+  cobranca_sync_status?: string | null
+  cobranca_ciclo_tipo?: string | null
+  cobranca_bling_id?: string | null
+  cobranca_link_pagamento?: string | null
+
+  alerta_financeiro?: string | null
+}
+
+type ApiResponse = {
+  ok?: boolean
+  success?: boolean
+  message?: string
+  error?: string
+  data?: MasterCliente[]
+  clientes?: MasterCliente[]
+}
+
+type AssinaturaView = {
+  id: string
+  businessId: string
+  cliente: string
+  responsavel: string
+  email: string
+  whatsapp: string
+  plano: string
+  valor: number
+  status: string
+  rawStatus: string
+  statusLabel: string
+  trialStartedAt: string | null
+  trialEndsAt: string | null
+  diasRestantes: number | null
+  totalLancamentos: number
+  proximoVencimento: string | null
+  formaPagamento: string
+  cobrancaStatus: string
+  cobrancaVencimento: string | null
+  cobrancaValor: number | null
+  cobrancaLink: string | null
+  alertaFinanceiro: string
+  precisaAtencao: boolean
+}
 
 const TRIAL_LIMIT_DAYS = 7
 const TRIAL_LIMIT_TRANSACTIONS = 30
 const DAY_IN_MS = 1000 * 60 * 60 * 24
 
-function getString(item: MasterCliente, keys: string[], fallback = "") {
-  for (const key of keys) {
-    const value = item[key]
-
-    if (typeof value === "string" && value.trim()) {
-      return value.trim()
-    }
-
-    if (typeof value === "number") {
-      return String(value)
-    }
-  }
-
-  return fallback
+const defaultSummary = {
+  total: 0,
+  attention: 0,
+  trialing: 0,
+  active: 0,
+  awaitingPayment: 0,
+  overdueOrBlocked: 0,
+  canceled: 0,
 }
 
-function getNumber(item: MasterCliente, keys: string[], fallback = 0) {
-  for (const key of keys) {
-    const value = item[key]
-
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value
-    }
-
-    if (typeof value === "string" && value.trim() && !Number.isNaN(Number(value))) {
-      return Number(value)
-    }
-  }
-
-  return fallback
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
 }
 
-function getDateString(item: MasterCliente, keys: string[]) {
-  for (const key of keys) {
-    const value = item[key]
+function normalizeStatus(value: unknown) {
+  const status = normalizeText(value)
 
-    if (typeof value === "string" && value.trim()) {
-      return value
-    }
-  }
+  if (status === "trial") return "trialing"
+  if (status === "cancelled") return "canceled"
 
-  return null
+  return status
 }
 
 function formatDate(value: string | null) {
   if (!value) return "—"
 
-  const date = new Date(value)
+  const cleanValue = String(value).substring(0, 10)
+  const [year, month, day] = cleanValue.split("-")
 
-  if (Number.isNaN(date.getTime())) {
-    return "—"
-  }
+  if (!year || !month || !day) return "—"
 
-  return date.toLocaleDateString("pt-BR")
+  return `${day}/${month}/${year}`
 }
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", {
+function formatMoney(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—"
+
+  return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  })
+  }).format(Number(value))
 }
 
 function calcularDiasRestantes(trialEndsAt: string | null) {
   if (!trialEndsAt) return null
 
-  const end = new Date(trialEndsAt)
-
-  if (Number.isNaN(end.getTime())) return null
-
+  const end = new Date(`${String(trialEndsAt).substring(0, 10)}T23:59:59`)
   const diff = end.getTime() - Date.now()
 
+  if (!Number.isFinite(diff)) return null
+
   return Math.max(0, Math.min(TRIAL_LIMIT_DAYS, Math.ceil(diff / DAY_IN_MS)))
-}
-
-function normalizarStatus(item: MasterCliente) {
-  const status = getString(item, [
-    "assinatura_status",
-    "subscription_status",
-    "status_assinatura",
-    "status",
-  ]).toLowerCase()
-
-  const trialEndsAt = getDateString(item, [
-    "trial_ends_at",
-    "assinatura_trial_ends_at",
-    "subscription_trial_ends_at",
-  ])
-
-  const totalLancamentos = getNumber(item, [
-    "total_lancamentos",
-    "transaction_count",
-    "transactions_count",
-    "uso_trial",
-    "trial_usage",
-  ])
-
-  const diasRestantes = calcularDiasRestantes(trialEndsAt)
-
-  const trialCongelado =
-    (status === "trialing" || status === "trial") &&
-    (diasRestantes === 0 || totalLancamentos >= TRIAL_LIMIT_TRANSACTIONS)
-
-  if (trialCongelado) return "frozen"
-
-  if (status === "trial") return "trialing"
-
-  if (
-    status === "active" ||
-    status === "trialing" ||
-    status === "awaiting_payment" ||
-    status === "canceled" ||
-    status === "frozen"
-  ) {
-    return status
-  }
-
-  return "sem_assinatura"
-}
-
-function getStatusLabel(status: string) {
-  if (status === "active") return "Ativa"
-  if (status === "trialing") return "Trial"
-  if (status === "awaiting_payment") return "Aguardando pagamento"
-  if (status === "frozen") return "Congelada"
-  if (status === "canceled") return "Cancelada"
-  return "Sem assinatura"
-}
-
-function getStatusClass(status: string) {
-  if (status === "active") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700"
-  }
-
-  if (status === "trialing") {
-    return "border-blue-200 bg-blue-50 text-blue-700"
-  }
-
-  if (status === "awaiting_payment") {
-    return "border-amber-200 bg-amber-50 text-amber-700"
-  }
-
-  if (status === "frozen") {
-    return "border-orange-200 bg-orange-50 text-orange-700"
-  }
-
-  if (status === "canceled") {
-    return "border-rose-200 bg-rose-50 text-rose-700"
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-600"
-}
-
-function extrairListaClientes(payload: unknown): MasterCliente[] {
-  if (!payload || typeof payload !== "object") return []
-
-  const data = payload as Record<string, unknown>
-
-  const candidates = [
-    data.clientes,
-    data.clients,
-    data.data,
-    data.items,
-    data.users,
-  ]
-
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter(
-        (item): item is MasterCliente =>
-          !!item && typeof item === "object" && !Array.isArray(item),
-      )
-    }
-  }
-
-  return []
 }
 
 function buildWhatsAppLink(whatsapp: string) {
@@ -206,6 +160,200 @@ function buildWhatsAppLink(whatsapp: string) {
   return `https://wa.me/${normalized}`
 }
 
+function getPaymentMethodLabel(value: string) {
+  const normalized = normalizeStatus(value)
+
+  if (normalized === "pix") return "Pix"
+  if (normalized === "boleto") return "Boleto"
+
+  return value || "—"
+}
+
+function getChargeStatusLabel(value: string) {
+  const normalized = normalizeStatus(value)
+
+  if (normalized === "pending") return "Aberta"
+  if (normalized === "overdue") return "Vencida"
+  if (normalized === "paid") return "Paga"
+  if (normalized === "canceled") return "Cancelada"
+  if (normalized === "error") return "Erro"
+
+  return value || "Sem cobrança"
+}
+
+function getStatusLabel(status: string) {
+  if (status === "active") return "Ativa"
+  if (status === "trialing") return "Em teste"
+  if (status === "trial_ended") return "Teste encerrado"
+  if (status === "awaiting_payment") return "Aguardando pagamento"
+  if (status === "grace_period") return "Em tolerância"
+  if (status === "overdue") return "Vencida"
+  if (status === "blocked") return "Bloqueada"
+  if (status === "canceled") return "Cancelada"
+
+  return "Sem assinatura"
+}
+
+function getStatusClass(status: string) {
+  if (status === "active") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  }
+
+  if (status === "trialing") {
+    return "border-[#cfd8ff] bg-[#eef3ff] text-[#002198]"
+  }
+
+  if (status === "awaiting_payment" || status === "grace_period") {
+    return "border-amber-200 bg-amber-50 text-amber-800"
+  }
+
+  if (status === "trial_ended" || status === "overdue" || status === "blocked") {
+    return "border-rose-200 bg-rose-50 text-rose-700"
+  }
+
+  if (status === "canceled") {
+    return "border-neutral-200 bg-neutral-50 text-neutral-700"
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-600"
+}
+
+function isAttentionStatus(status: string) {
+  return (
+    status === "trial_ended" ||
+    status === "awaiting_payment" ||
+    status === "grace_period" ||
+    status === "overdue" ||
+    status === "blocked"
+  )
+}
+
+function resolveStatus(cliente: MasterCliente) {
+  const rawStatus = normalizeStatus(cliente.assinatura_status)
+  const diasRestantes = calcularDiasRestantes(cliente.trial_ends_at ?? null)
+  const totalLancamentos = Number(cliente.total_lancamentos ?? 0)
+
+  const trialEndedByRule =
+    rawStatus === "trialing" &&
+    (diasRestantes === 0 || totalLancamentos >= TRIAL_LIMIT_TRANSACTIONS)
+
+  if (trialEndedByRule) return "trial_ended"
+
+  if (
+    rawStatus === "trialing" ||
+    rawStatus === "active" ||
+    rawStatus === "awaiting_payment" ||
+    rawStatus === "grace_period" ||
+    rawStatus === "overdue" ||
+    rawStatus === "blocked" ||
+    rawStatus === "canceled"
+  ) {
+    return rawStatus
+  }
+
+  return "sem_assinatura"
+}
+
+function mapClienteToAssinatura(cliente: MasterCliente): AssinaturaView {
+  const status = resolveStatus(cliente)
+  const rawStatus = normalizeStatus(cliente.assinatura_status)
+
+  return {
+    id:
+      cliente.assinatura_id ||
+      cliente.business_id ||
+      cliente.email_financeiro ||
+      crypto.randomUUID(),
+    businessId: cliente.business_id || "",
+    cliente: cliente.negocio || cliente.name || "Cliente sem nome",
+    responsavel: cliente.nome_responsavel || "Responsável não informado",
+    email: cliente.email_financeiro || "Email não informado",
+    whatsapp: cliente.whatsapp || "",
+    plano: cliente.plano || "Plano Lucro Real",
+    valor: Number(cliente.assinatura_valor ?? 29.9),
+    status,
+    rawStatus,
+    statusLabel: getStatusLabel(status),
+    trialStartedAt: cliente.trial_started_at || null,
+    trialEndsAt: cliente.trial_ends_at || null,
+    diasRestantes: calcularDiasRestantes(cliente.trial_ends_at ?? null),
+    totalLancamentos: Number(cliente.total_lancamentos ?? 0),
+    proximoVencimento: cliente.proximo_vencimento || null,
+    formaPagamento: getPaymentMethodLabel(cliente.forma_pagamento || ""),
+    cobrancaStatus: getChargeStatusLabel(cliente.cobranca_status || ""),
+    cobrancaVencimento: cliente.cobranca_vencimento || null,
+    cobrancaValor: cliente.cobranca_valor ?? null,
+    cobrancaLink: cliente.cobranca_link_pagamento || null,
+    alertaFinanceiro: cliente.alerta_financeiro || "sem_cobranca",
+    precisaAtencao: isAttentionStatus(status),
+  }
+}
+
+function matchesStatusFilter(item: AssinaturaView, statusFilter: StatusFilter) {
+  if (statusFilter === "todos") return true
+  if (statusFilter === "attention") return item.precisaAtencao
+
+  if (statusFilter === "overdue_or_blocked") {
+    return item.status === "overdue" || item.status === "blocked"
+  }
+
+  return item.status === statusFilter
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone = "default",
+  active = false,
+  onClick,
+}: {
+  label: string
+  value: number
+  tone?: "default" | "danger" | "success" | "warning" | "blue"
+  active?: boolean
+  onClick: () => void
+}) {
+  const className =
+    tone === "danger"
+      ? "border border-rose-200 bg-rose-50"
+      : tone === "success"
+        ? "border border-emerald-200 bg-emerald-50"
+        : tone === "warning"
+          ? "border border-amber-200 bg-amber-50"
+          : tone === "blue"
+            ? "border border-[#cfd8ff] bg-[#eef3ff]"
+            : "border border-[#dfe7f7] bg-white"
+
+  const textClass =
+    tone === "danger"
+      ? "text-rose-800"
+      : tone === "success"
+        ? "text-emerald-800"
+        : tone === "warning"
+          ? "text-amber-800"
+          : "text-black"
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-[28px] p-5 text-left shadow-[0_18px_45px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_55px_rgba(15,23,42,0.08)]",
+        className,
+        active ? "ring-2 ring-[#002198] ring-offset-2" : "",
+      ].join(" ")}
+    >
+      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
+        {label}
+      </p>
+
+      <p className={["mt-3 text-3xl font-bold", textClass].join(" ")}>
+        {value}
+      </p>
+    </button>
+  )
+}
+
 export default function TorreAssinaturasPage() {
   const [clientes, setClientes] = useState<MasterCliente[]>([])
   const [loading, setLoading] = useState(true)
@@ -213,7 +361,7 @@ export default function TorreAssinaturasPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos")
 
-  async function loadClientes() {
+  const loadClientes = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -223,351 +371,394 @@ export default function TorreAssinaturasPage() {
         cache: "no-store",
       })
 
-      const payload = await response.json()
+      const payload = (await response.json()) as ApiResponse
 
-      if (!response.ok || payload?.success === false) {
-        throw new Error(payload?.error ?? "Não foi possível carregar as assinaturas.")
+      if (!response.ok || payload?.ok === false || payload?.success === false) {
+        throw new Error(
+          payload?.message ||
+            payload?.error ||
+            "Não foi possível carregar as assinaturas.",
+        )
       }
 
-      setClientes(extrairListaClientes(payload))
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Erro desconhecido.")
+      setClientes(payload.data ?? payload.clientes ?? [])
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Erro desconhecido ao carregar assinaturas.",
+      )
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void loadClientes()
-  }, [])
+  }, [loadClientes])
 
   const assinaturas = useMemo(() => {
-    return clientes.map((cliente) => {
-      const status = normalizarStatus(cliente)
-      const trialEndsAt = getDateString(cliente, [
-        "trial_ends_at",
-        "assinatura_trial_ends_at",
-        "subscription_trial_ends_at",
-      ])
-
-      const totalLancamentos = getNumber(cliente, [
-        "total_lancamentos",
-        "transaction_count",
-        "transactions_count",
-        "uso_trial",
-        "trial_usage",
-      ])
-
-      return {
-        raw: cliente,
-        id: getString(cliente, ["business_id", "id", "empresa_id"]),
-        empresa: getString(cliente, [
-          "empresa",
-          "business_name",
-          "name",
-          "nome_empresa",
-          "nome_fantasia",
-          "razao_social",
-        ], "Empresa sem nome"),
-        responsavel: getString(cliente, [
-          "responsavel",
-          "nome_responsavel",
-          "owner_name",
-          "cliente_nome",
-        ], "—"),
-        email: getString(cliente, [
-          "email",
-          "email_financeiro",
-          "financeiro_email",
-          "owner_email",
-        ], "—"),
-        whatsapp: getString(cliente, [
-          "whatsapp",
-          "telefone",
-          "celular",
-        ]),
-        plano: getString(cliente, [
-          "plano",
-          "assinatura_plano",
-          "subscription_plan",
-        ], "Plano Lucro Real"),
-        valor: getNumber(cliente, [
-          "valor",
-          "assinatura_valor",
-          "subscription_value",
-        ], 29.9),
-        status,
-        trialEndsAt,
-        diasRestantes: calcularDiasRestantes(trialEndsAt),
-        totalLancamentos,
-        cobrancaStatus: getString(cliente, [
-          "cobranca_status",
-          "charge_status",
-          "ultima_cobranca_status",
-        ], "—"),
-        vencimento: getDateString(cliente, [
-          "vencimento",
-          "cobranca_vencimento",
-          "ultima_cobranca_vencimento",
-        ]),
-        paymentLink: getString(cliente, [
-          "bling_link_pagamento",
-          "payment_link",
-          "link_pagamento",
-          "bling_link_boleto",
-        ]),
-      }
-    })
+    return clientes.map(mapClienteToAssinatura)
   }, [clientes])
 
+  const summary = useMemo(() => {
+    return assinaturas.reduce(
+      (acc, assinatura) => {
+        acc.total += 1
+
+        if (assinatura.precisaAtencao) acc.attention += 1
+        if (assinatura.status === "trialing") acc.trialing += 1
+        if (assinatura.status === "active") acc.active += 1
+        if (assinatura.status === "awaiting_payment") acc.awaitingPayment += 1
+
+        if (
+          assinatura.status === "overdue" ||
+          assinatura.status === "blocked" ||
+          assinatura.status === "trial_ended"
+        ) {
+          acc.overdueOrBlocked += 1
+        }
+
+        if (assinatura.status === "canceled") acc.canceled += 1
+
+        return acc
+      },
+      { ...defaultSummary },
+    )
+  }, [assinaturas])
+
   const filtered = useMemo(() => {
-    const cleanSearch = search.trim().toLowerCase()
+    const cleanSearch = normalizeText(search)
 
     return assinaturas.filter((assinatura) => {
-      const matchesStatus =
-        statusFilter === "todos" || assinatura.status === statusFilter
+      const matchesStatus = matchesStatusFilter(assinatura, statusFilter)
 
-      const matchesSearch =
-        !cleanSearch ||
-        assinatura.empresa.toLowerCase().includes(cleanSearch) ||
-        assinatura.responsavel.toLowerCase().includes(cleanSearch) ||
-        assinatura.email.toLowerCase().includes(cleanSearch)
+      const searchable = normalizeText([
+        assinatura.cliente,
+        assinatura.responsavel,
+        assinatura.email,
+        assinatura.plano,
+        assinatura.statusLabel,
+        assinatura.formaPagamento,
+        assinatura.cobrancaStatus,
+      ].join(" "))
+
+      const matchesSearch = !cleanSearch || searchable.includes(cleanSearch)
 
       return matchesStatus && matchesSearch
     })
   }, [assinaturas, search, statusFilter])
 
-  const summary = useMemo(() => {
-    return {
-      total: assinaturas.length,
-      trialing: assinaturas.filter((item) => item.status === "trialing").length,
-      active: assinaturas.filter((item) => item.status === "active").length,
-      awaitingPayment: assinaturas.filter((item) => item.status === "awaiting_payment").length,
-      frozen: assinaturas.filter((item) => item.status === "frozen").length,
-      canceled: assinaturas.filter((item) => item.status === "canceled").length,
-    }
-  }, [assinaturas])
-
   return (
-    <main className="min-h-screen bg-[#F8FBFF] px-6 py-8 text-[#07122F]">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#002198]">
-              Torre de Controle
-            </p>
+    <PageContainer>
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow="Torre de controle"
+          title="Assinaturas"
+          subtitle="Acompanhe o acesso dos clientes: teste, assinatura ativa, aguardando pagamento, bloqueios e cancelamentos."
+        />
 
-            <h1 className="mt-2 text-3xl font-bold text-[#07122F]">
-              Assinaturas
-            </h1>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <SummaryCard
+            label="Total"
+            value={summary.total}
+            active={statusFilter === "todos"}
+            onClick={() => setStatusFilter("todos")}
+          />
 
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Acompanhe trial, clientes ativos, congelados, aguardando pagamento e cancelamentos do Caixa Inteligente.
-            </p>
+          <SummaryCard
+            label="Ação necessária"
+            value={summary.attention}
+            tone={summary.attention > 0 ? "danger" : "default"}
+            active={statusFilter === "attention"}
+            onClick={() => setStatusFilter("attention")}
+          />
+
+          <SummaryCard
+            label="Em teste"
+            value={summary.trialing}
+            tone="blue"
+            active={statusFilter === "trialing"}
+            onClick={() => setStatusFilter("trialing")}
+          />
+
+          <SummaryCard
+            label="Ativas"
+            value={summary.active}
+            tone="success"
+            active={statusFilter === "active"}
+            onClick={() => setStatusFilter("active")}
+          />
+
+          <SummaryCard
+            label="Aguardando"
+            value={summary.awaitingPayment}
+            tone="warning"
+            active={statusFilter === "awaiting_payment"}
+            onClick={() => setStatusFilter("awaiting_payment")}
+          />
+
+          <SummaryCard
+            label="Bloqueios"
+            value={summary.overdueOrBlocked}
+            tone={summary.overdueOrBlocked > 0 ? "danger" : "default"}
+            active={statusFilter === "overdue_or_blocked"}
+            onClick={() => setStatusFilter("overdue_or_blocked")}
+          />
+        </div>
+
+        <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-6">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px_auto]">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-black">
+                Buscar assinatura
+              </label>
+
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cliente, responsável, e-mail, plano ou status"
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-black">Status</label>
+
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as StatusFilter)
+                }
+                className="h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
+              >
+                <option value="todos">Todos</option>
+                <option value="attention">Ação necessária</option>
+                <option value="trialing">Em teste</option>
+                <option value="trial_ended">Teste encerrado</option>
+                <option value="active">Ativas</option>
+                <option value="awaiting_payment">Aguardando pagamento</option>
+                <option value="grace_period">Em tolerância</option>
+                <option value="overdue_or_blocked">Vencidas/Bloqueadas</option>
+                <option value="canceled">Canceladas</option>
+                <option value="sem_assinatura">Sem assinatura</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-2 xl:items-end xl:justify-end">
+              <button
+                type="button"
+                onClick={() => void loadClientes()}
+                disabled={loading}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Atualizando..." : "Atualizar"}
+              </button>
+            </div>
           </div>
+        </Card>
 
-          <button
-            type="button"
-            onClick={() => void loadClientes()}
-            disabled={loading}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-[#002198] px-5 text-sm font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:bg-[#00196F] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {loading ? "Atualizando..." : "Atualizar dados"}
-          </button>
-        </header>
+        {error ? (
+          <Card className="rounded-[28px] border border-rose-200 bg-rose-50 p-5 shadow-none">
+            <p className="text-sm font-semibold text-rose-700">{error}</p>
+          </Card>
+        ) : null}
 
-        {error && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-            {error}
+        {loading ? (
+          <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+            <p className="text-base font-semibold text-black">
+              Carregando assinaturas...
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-neutral-600">
+              Estou conferindo o acesso dos clientes.
+            </p>
+          </Card>
+        ) : filtered.length === 0 ? (
+          <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+            <p className="text-base font-semibold text-black">
+              Nenhuma assinatura encontrada.
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-neutral-600">
+              Ajuste os filtros ou atualize a tela.
+            </p>
+          </Card>
+        ) : (
+          <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+            <div className="hidden grid-cols-[1.2fr_0.85fr_0.75fr_0.85fr_0.85fr_0.9fr_0.8fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+              <span>Cliente</span>
+              <span>Assinatura</span>
+              <span>Teste</span>
+              <span>Próximo vencimento</span>
+              <span>Cobrança</span>
+              <span>Contato</span>
+              <span className="text-right">Ação</span>
+            </div>
+
+            <div className="divide-y divide-[#dfe7f7]">
+              {filtered.map((assinatura) => {
+                const whatsappLink = buildWhatsAppLink(assinatura.whatsapp)
+
+                return (
+                  <div
+                    key={assinatura.id}
+                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.2fr_0.85fr_0.75fr_0.85fr_0.85fr_0.9fr_0.8fr] xl:items-start"
+                  >
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Cliente
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-black">
+                        {assinatura.cliente}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {assinatura.responsavel}
+                      </p>
+
+                      <p className="mt-1 break-all text-xs text-neutral-500">
+                        {assinatura.email}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Assinatura
+                      </p>
+
+                      <span
+                        className={[
+                          "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+                          getStatusClass(assinatura.status),
+                        ].join(" ")}
+                      >
+                        {assinatura.statusLabel}
+                      </span>
+
+                      <p className="mt-2 text-xs text-neutral-500">
+                        {assinatura.plano}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {formatMoney(assinatura.valor)} ·{" "}
+                        {assinatura.formaPagamento}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Teste
+                      </p>
+
+                      {assinatura.diasRestantes === null ? (
+                        <p className="mt-1 text-sm text-neutral-500">—</p>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-sm font-semibold text-black">
+                            {assinatura.diasRestantes} dias
+                          </p>
+
+                          <p className="mt-1 text-xs text-neutral-500">
+                            {assinatura.totalLancamentos}/
+                            {TRIAL_LIMIT_TRANSACTIONS} lançamentos
+                          </p>
+
+                          <p className="mt-1 text-xs text-neutral-500">
+                            até {formatDate(assinatura.trialEndsAt)}
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Próximo vencimento
+                      </p>
+
+                      <p className="mt-1 text-sm text-neutral-700">
+                        {formatDate(assinatura.proximoVencimento)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Cobrança
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-black">
+                        {assinatura.cobrancaStatus}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Venc.: {formatDate(assinatura.cobrancaVencimento)}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {formatMoney(assinatura.cobrancaValor)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Contato
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {assinatura.whatsapp || "WhatsApp não informado"}
+                      </p>
+                    </div>
+
+                    <div className="xl:text-right">
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Ação
+                      </p>
+
+                      {assinatura.precisaAtencao ? (
+                        <span className="mb-2 inline-flex rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                          Ação necessária
+                        </span>
+                      ) : null}
+
+                      <div className="mt-2 flex flex-col gap-2">
+                        <a
+                          href="/cobrancas"
+                          className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                        >
+                          Ver cobranças
+                        </a>
+
+                        {assinatura.cobrancaLink ? (
+                          <a
+                            href={assinatura.cobrancaLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                          >
+                            Abrir cobrança
+                          </a>
+                        ) : null}
+
+                        {whatsappLink ? (
+                          <a
+                            href={whatsappLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex w-full items-center justify-center rounded-2xl bg-[#002198] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#00166f] xl:w-auto"
+                          >
+                            WhatsApp
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <ResumoCard label="Total" value={summary.total} />
-          <ResumoCard label="Trial" value={summary.trialing} />
-          <ResumoCard label="Ativas" value={summary.active} />
-          <ResumoCard label="Aguardando" value={summary.awaitingPayment} />
-          <ResumoCard label="Congeladas" value={summary.frozen} />
-          <ResumoCard label="Canceladas" value={summary.canceled} />
-        </section>
-
-        <section className="rounded-[28px] border border-[#DFE7F7] bg-white p-5 shadow-xl shadow-blue-900/5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por empresa, responsável ou e-mail..."
-              className="h-11 w-full rounded-2xl border border-[#DFE7F7] bg-white px-4 text-sm outline-none transition focus:border-[#002198] lg:max-w-md"
-            />
-
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="h-11 rounded-2xl border border-[#DFE7F7] bg-white px-4 text-sm outline-none transition focus:border-[#002198]"
-            >
-              <option value="todos">Todos os status</option>
-              <option value="trialing">Trial</option>
-              <option value="active">Ativas</option>
-              <option value="awaiting_payment">Aguardando pagamento</option>
-              <option value="frozen">Congeladas</option>
-              <option value="canceled">Canceladas</option>
-            </select>
-          </div>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[1100px] border-separate border-spacing-y-3 text-left">
-              <thead>
-                <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                  <th className="px-4">Cliente</th>
-                  <th className="px-4">Plano</th>
-                  <th className="px-4">Status</th>
-                  <th className="px-4">Trial</th>
-                  <th className="px-4">Uso</th>
-                  <th className="px-4">Cobrança</th>
-                  <th className="px-4">Vencimento</th>
-                  <th className="px-4 text-right">Ações</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="rounded-2xl bg-[#F8FBFF] p-6 text-center text-sm text-slate-500">
-                      Carregando assinaturas...
-                    </td>
-                  </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="rounded-2xl bg-[#F8FBFF] p-6 text-center text-sm text-slate-500">
-                      Nenhuma assinatura encontrada.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((assinatura) => {
-                    const whatsappLink = buildWhatsAppLink(assinatura.whatsapp)
-
-                    return (
-                      <tr key={assinatura.id || assinatura.email} className="rounded-2xl bg-[#F8FBFF] text-sm">
-                        <td className="rounded-l-2xl px-4 py-4">
-                          <div className="font-semibold text-[#07122F]">
-                            {assinatura.empresa}
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {assinatura.responsavel}
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {assinatura.email}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="font-semibold text-[#07122F]">
-                            {assinatura.plano}
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            {formatCurrency(assinatura.valor)}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getStatusClass(assinatura.status)}`}>
-                            {getStatusLabel(assinatura.status)}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          {assinatura.diasRestantes === null ? (
-                            <span className="text-slate-400">—</span>
-                          ) : (
-                            <div>
-                              <div className="font-semibold text-[#07122F]">
-                                {assinatura.diasRestantes} dias
-                              </div>
-
-                              <div className="mt-1 text-xs text-slate-500">
-                                até {formatDate(assinatura.trialEndsAt)}
-                              </div>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="font-semibold text-[#07122F]">
-                            {assinatura.totalLancamentos}/{TRIAL_LIMIT_TRANSACTIONS}
-                          </div>
-
-                          <div className="mt-1 text-xs text-slate-500">
-                            lançamentos
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <div className="font-semibold text-[#07122F]">
-                            {assinatura.cobrancaStatus}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          {formatDate(assinatura.vencimento)}
-                        </td>
-
-                        <td className="rounded-r-2xl px-4 py-4">
-                          <div className="flex justify-end gap-2">
-                            {assinatura.paymentLink && (
-                              <a
-                                href={assinatura.paymentLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-full border border-[#DFE7F7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:border-[#002198]"
-                              >
-                                Pagamento
-                              </a>
-                            )}
-
-                            {whatsappLink && (
-                              <a
-                                href={whatsappLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-full border border-[#DFE7F7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:border-[#002198]"
-                              >
-                                WhatsApp
-                              </a>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </div>
-    </main>
-  )
-}
-
-function ResumoCard({
-  label,
-  value,
-}: {
-  label: string
-  value: number
-}) {
-  return (
-    <div className="rounded-[24px] border border-[#DFE7F7] bg-white p-5 shadow-lg shadow-blue-900/5">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-        {label}
-      </p>
-
-      <p className="mt-3 text-3xl font-bold text-[#07122F]">
-        {value}
-      </p>
-    </div>
+    </PageContainer>
   )
 }
