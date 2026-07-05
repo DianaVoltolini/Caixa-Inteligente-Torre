@@ -1,4 +1,4 @@
-﻿// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\app\(master)\financeiro\page.tsx
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\app\(master)\financeiro\page.tsx
 
 "use client"
 
@@ -12,11 +12,11 @@ type StatusFilter =
   | "todos"
   | "a_receber"
   | "paid"
-  | "overdue"
+  | "vencido"
   | "error"
   | "needs_action"
 
-type CobrancaItem = {
+type FinanceiroItem = {
   id: string
   business_id: string
   assinatura_id: string | null
@@ -27,8 +27,7 @@ type CobrancaItem = {
   assinatura_status: string | null
   plano: string | null
   forma_pagamento: string | null
-  proximo_vencimento: string | null
-  valor: number | null
+  valor: number
   vencimento: string | null
   status: string | null
   sync_status: string | null
@@ -45,19 +44,28 @@ type CobrancaItem = {
   needs_action: boolean
 }
 
-type CobrancasResponse = {
+type FinanceiroResponse = {
   ok: boolean
   message?: string
-  data?: CobrancaItem[]
+  summary?: {
+    totalCobrancas: number
+    totalPeriodo: number
+    aReceber: number
+    recebido: number
+    vencido: number
+    erros: number
+    acaoManual: number
+  }
+  data?: FinanceiroItem[]
 }
 
 const emptySummary = {
-  clientes: 0,
-  valorAtual: 0,
-  valorAberto: 0,
-  valorRecebido: 0,
-  valorVencido: 0,
-  valorErro: 0,
+  totalCobrancas: 0,
+  totalPeriodo: 0,
+  aReceber: 0,
+  recebido: 0,
+  vencido: 0,
+  erros: 0,
   acaoManual: 0,
 }
 
@@ -69,12 +77,24 @@ function normalizeText(value: unknown) {
     .replace(/[\u0300-\u036f]/g, "")
 }
 
-function normalizeStatus(value: unknown) {
-  const status = normalizeText(value)
+function onlyNumbers(value: string | null) {
+  return String(value ?? "").replace(/\D/g, "")
+}
 
-  if (status === "cancelled") return "canceled"
+function getCurrentMonthStart() {
+  const date = new Date()
+  date.setDate(1)
+  return date.toISOString().substring(0, 10)
+}
 
-  return status
+function getToday() {
+  return new Date().toISOString().substring(0, 10)
+}
+
+function getCurrentCompetencia() {
+  const date = new Date()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  return `${date.getFullYear()}-${month}`
 }
 
 function formatDate(value: string | null) {
@@ -89,42 +109,14 @@ function formatDate(value: string | null) {
 }
 
 function formatMoney(value: number | null | undefined) {
-  const numberValue = Number(value ?? 0)
-
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(numberValue)
-}
-
-function isPastDate(value: string | null) {
-  if (!value) return false
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const date = new Date(`${String(value).substring(0, 10)}T00:00:00`)
-  date.setHours(0, 0, 0, 0)
-
-  return Number.isFinite(date.getTime()) && date < today
-}
-
-function isAReceber(item: CobrancaItem) {
-  const status = normalizeStatus(item.status)
-
-  return status === "pending" || status === "overdue"
-}
-
-function isVencida(item: CobrancaItem) {
-  const status = normalizeStatus(item.status)
-
-  if (status === "overdue") return true
-
-  return status === "pending" && isPastDate(item.vencimento)
+  }).format(Number(value ?? 0))
 }
 
 function getStatusLabel(value: string | null) {
-  const status = normalizeStatus(value)
+  const status = normalizeText(value)
 
   if (status === "pending") return "Aberta"
   if (status === "paid") return "Paga"
@@ -136,7 +128,7 @@ function getStatusLabel(value: string | null) {
 }
 
 function getStatusClass(value: string | null) {
-  const status = normalizeStatus(value)
+  const status = normalizeText(value)
 
   if (status === "paid") {
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -153,72 +145,43 @@ function getStatusClass(value: string | null) {
   return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
 }
 
-function matchesFilter(item: CobrancaItem, filter: StatusFilter) {
-  const status = normalizeStatus(item.status)
+function getCycleLabel(value: string | null) {
+  const normalized = normalizeText(value)
 
-  if (filter === "todos") return true
-  if (filter === "a_receber") return isAReceber(item)
-  if (filter === "overdue") return isVencida(item)
-  if (filter === "needs_action") return item.needs_action
-  if (filter === "error") return status === "error"
+  if (normalized === "first_charge") return "Ativação"
+  if (normalized === "recurring") return "Renovação"
+  if (normalized === "recurrence") return "Renovação"
+  if (normalized === "mensalidade") return "Renovação"
 
-  return status === filter
+  return value || "—"
 }
 
-function matchesSearch(item: CobrancaItem, search: string) {
-  if (!search) return true
+function buildWhatsAppMessage(item: FinanceiroItem) {
+  const link = item.bling_link_pagamento || ""
+  const vencimento = formatDate(item.vencimento)
+  const valor = formatMoney(item.valor)
 
-  const content = normalizeText([
-    item.cliente,
-    item.responsavel,
-    item.email_financeiro,
-    item.whatsapp,
-    item.status,
-    item.plano,
-    item.competencia,
-    item.bling_cobranca_id,
-    item.bling_numero_documento,
-  ].join(" "))
-
-  return content.includes(search)
+  return [
+    `Olá, ${item.responsavel || item.cliente}.`,
+    "",
+    "Segue o link da sua cobrança do Meu Caixa Inteligente.",
+    "",
+    `Valor: ${valor}`,
+    `Vencimento: ${vencimento}`,
+    "",
+    link,
+  ].join("\n")
 }
 
-function getSummary(items: CobrancaItem[]) {
-  return items.reduce(
-    (summary, item) => {
-      const status = normalizeStatus(item.status)
-      const valor = Number(item.valor ?? 0)
+function buildWhatsAppChargeUrl(item: FinanceiroItem) {
+  const digits = onlyNumbers(item.whatsapp)
 
-      summary.clientes += 1
+  if (!digits || !item.bling_link_pagamento) return null
 
-      if (status !== "canceled") {
-        summary.valorAtual += valor
-      }
+  const phone = digits.startsWith("55") ? digits : `55${digits}`
+  const message = encodeURIComponent(buildWhatsAppMessage(item))
 
-      if (isAReceber(item)) {
-        summary.valorAberto += valor
-      }
-
-      if (status === "paid") {
-        summary.valorRecebido += valor
-      }
-
-      if (isVencida(item)) {
-        summary.valorVencido += valor
-      }
-
-      if (status === "error") {
-        summary.valorErro += valor
-      }
-
-      if (item.needs_action) {
-        summary.acaoManual += 1
-      }
-
-      return summary
-    },
-    { ...emptySummary },
-  )
+  return `https://wa.me/${phone}?text=${message}`
 }
 
 function SummaryCard({
@@ -280,24 +243,49 @@ function SummaryCard({
 }
 
 export default function FinanceiroPage() {
-  const [items, setItems] = useState<CobrancaItem[]>([])
+  const [items, setItems] = useState<FinanceiroItem[]>([])
+  const [summary, setSummary] = useState(emptySummary)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [search, setSearch] = useState("")
-  const [filter, setFilter] = useState<StatusFilter>("todos")
+  const [status, setStatus] = useState<StatusFilter>("todos")
+  const [dateFrom, setDateFrom] = useState(getCurrentMonthStart())
+  const [dateTo, setDateTo] = useState(getToday())
+  const [competencia, setCompetencia] = useState("")
+  const [useCompetencia, setUseCompetencia] = useState(false)
+
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams()
+
+    params.set("limit", "500")
+    params.set("status", status)
+
+    if (search.trim()) {
+      params.set("search", search.trim())
+    }
+
+    if (useCompetencia && competencia.trim()) {
+      params.set("competencia", competencia.trim())
+    } else {
+      params.set("dateFrom", dateFrom)
+      params.set("dateTo", dateTo)
+    }
+
+    return params.toString()
+  }, [competencia, dateFrom, dateTo, search, status, useCompetencia])
 
   const loadFinanceiro = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const response = await fetch("/api/master/cobrancas?status=todos&limit=300", {
+      const response = await fetch(`/api/master/financeiro?${queryString}`, {
         method: "GET",
         cache: "no-store",
       })
 
-      const payload = (await response.json()) as CobrancasResponse
+      const payload = (await response.json()) as FinanceiroResponse
 
       if (!response.ok || !payload.ok) {
         throw new Error(
@@ -306,6 +294,7 @@ export default function FinanceiroPage() {
       }
 
       setItems(payload.data ?? [])
+      setSummary(payload.summary ?? emptySummary)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -313,24 +302,27 @@ export default function FinanceiroPage() {
           : "Erro ao carregar financeiro.",
       )
       setItems([])
+      setSummary(emptySummary)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [queryString])
 
   useEffect(() => {
     void loadFinanceiro()
   }, [loadFinanceiro])
 
-  const summary = useMemo(() => getSummary(items), [items])
+  function applyCurrentMonth() {
+    setUseCompetencia(false)
+    setDateFrom(getCurrentMonthStart())
+    setDateTo(getToday())
+    setCompetencia("")
+  }
 
-  const filteredItems = useMemo(() => {
-    const cleanSearch = normalizeText(search)
-
-    return items.filter((item) => {
-      return matchesFilter(item, filter) && matchesSearch(item, cleanSearch)
-    })
-  }, [filter, items, search])
+  function applyCurrentCompetencia() {
+    setUseCompetencia(true)
+    setCompetencia(getCurrentCompetencia())
+  }
 
   return (
     <PageContainer>
@@ -338,66 +330,66 @@ export default function FinanceiroPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Financeiro"
-          subtitle="Visão financeira atual do SaaS, considerando uma cobrança atual por cliente."
+          subtitle="Coração financeiro do SaaS: recebidos, a receber, vencidos, erros e envio manual de cobrança."
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <SummaryCard
-            label="Clientes"
-            value={summary.clientes}
-            helper="Clientes com cobrança atual."
-            active={filter === "todos"}
-            onClick={() => setFilter("todos")}
+            label="Cobranças"
+            value={summary.totalCobrancas}
+            helper="Total no filtro atual."
+            active={status === "todos"}
+            onClick={() => setStatus("todos")}
           />
 
           <SummaryCard
-            label="Atual"
-            value={formatMoney(summary.valorAtual)}
-            helper="Valor total atual, sem canceladas."
+            label="Total previsto"
+            value={formatMoney(summary.totalPeriodo)}
+            helper="Tudo no período, sem canceladas."
             tone="blue"
-            active={filter === "todos"}
-            onClick={() => setFilter("todos")}
+            active={status === "todos"}
+            onClick={() => setStatus("todos")}
           />
 
           <SummaryCard
             label="A receber"
-            value={formatMoney(summary.valorAberto)}
-            helper="Cobranças abertas ou vencidas."
+            value={formatMoney(summary.aReceber)}
+            helper="Abertas e vencidas."
             tone="warning"
-            active={filter === "a_receber"}
-            onClick={() => setFilter("a_receber")}
+            active={status === "a_receber"}
+            onClick={() => setStatus("a_receber")}
           />
 
           <SummaryCard
             label="Recebido"
-            value={formatMoney(summary.valorRecebido)}
-            helper="Cobranças atuais pagas."
+            value={formatMoney(summary.recebido)}
+            helper="Pagas no filtro atual."
             tone="success"
-            active={filter === "paid"}
-            onClick={() => setFilter("paid")}
+            active={status === "paid"}
+            onClick={() => setStatus("paid")}
           />
 
           <SummaryCard
             label="Vencido"
-            value={formatMoney(summary.valorVencido)}
-            helper="Cobranças vencidas."
-            tone={summary.valorVencido > 0 ? "danger" : "default"}
-            active={filter === "overdue"}
-            onClick={() => setFilter("overdue")}
+            value={formatMoney(summary.vencido)}
+            helper="Vencidas no filtro atual."
+            tone={summary.vencido > 0 ? "danger" : "default"}
+            active={status === "vencido"}
+            onClick={() => setStatus("vencido")}
           />
 
           <SummaryCard
             label="Ação manual"
             value={summary.acaoManual}
-            helper="Itens que exigem conferência."
+            helper="Exigem conferência."
             tone={summary.acaoManual > 0 ? "danger" : "default"}
-            active={filter === "needs_action"}
-            onClick={() => setFilter("needs_action")}
+            active={status === "needs_action"}
+            onClick={() => setStatus("needs_action")}
           />
         </div>
 
         <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-6">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px_auto]">
+          <div className="grid gap-4 xl:grid-cols-[1fr_180px_180px_190px]">
             <div className="space-y-2">
               <label className="text-sm font-medium text-black">
                 Buscar no financeiro
@@ -412,30 +404,110 @@ export default function FinanceiroPage() {
             </div>
 
             <div className="space-y-2">
+              <label className="text-sm font-medium text-black">De</label>
+
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(event) => {
+                  setDateFrom(event.target.value)
+                  setUseCompetencia(false)
+                }}
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-black">Até</label>
+
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(event) => {
+                  setDateTo(event.target.value)
+                  setUseCompetencia(false)
+                }}
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-black">
+                Competência
+              </label>
+
+              <Input
+                type="month"
+                value={competencia}
+                onChange={(event) => {
+                  setCompetencia(event.target.value)
+                  setUseCompetencia(Boolean(event.target.value))
+                }}
+                className="h-11"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[260px_1fr_auto_auto_auto]">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-black">
                 Situação
               </label>
 
               <select
-                value={filter}
-                onChange={(event) => setFilter(event.target.value as StatusFilter)}
+                value={status}
+                onChange={(event) =>
+                  setStatus(event.target.value as StatusFilter)
+                }
                 className="h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
               >
                 <option value="todos">Todos</option>
                 <option value="a_receber">A receber</option>
                 <option value="paid">Recebido</option>
-                <option value="overdue">Vencido</option>
+                <option value="vencido">Vencido</option>
                 <option value="error">Com erro</option>
                 <option value="needs_action">Ação manual</option>
               </select>
             </div>
 
-            <div className="flex flex-col gap-2 xl:items-end xl:justify-end">
+            <div className="flex items-end">
+              <p className="pb-3 text-xs leading-5 text-neutral-500">
+                {useCompetencia
+                  ? `Filtro por competência: ${
+                      competencia || "não informada"
+                    }`
+                  : `Filtro por vencimento: ${formatDate(
+                      dateFrom,
+                    )} até ${formatDate(dateTo)}`}
+              </p>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={applyCurrentMonth}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff]"
+              >
+                Mês atual
+              </button>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={applyCurrentCompetencia}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff]"
+              >
+                Competência atual
+              </button>
+            </div>
+
+            <div className="flex items-end">
               <button
                 type="button"
                 onClick={() => void loadFinanceiro()}
                 disabled={loading}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-[#002198] px-4 text-sm font-semibold text-white transition hover:bg-[#00166f] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? "Atualizando..." : "Atualizar"}
               </button>
@@ -455,19 +527,19 @@ export default function FinanceiroPage() {
               Carregando financeiro...
             </p>
           </Card>
-        ) : filteredItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <p className="text-base font-semibold text-black">
               Nenhum registro financeiro encontrado.
             </p>
 
             <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Ajuste os filtros ou atualize a tela.
+              Ajuste período, competência ou situação.
             </p>
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.15fr_0.75fr_0.75fr_0.8fr_0.9fr_0.9fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="hidden grid-cols-[1.1fr_0.75fr_0.75fr_0.85fr_0.9fr_1fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
               <span>Cliente</span>
               <span>Situação</span>
               <span>Valor</span>
@@ -477,94 +549,129 @@ export default function FinanceiroPage() {
             </div>
 
             <div className="divide-y divide-[#dfe7f7]">
-              {filteredItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="grid gap-4 px-5 py-5 xl:grid-cols-[1.15fr_0.75fr_0.75fr_0.8fr_0.9fr_0.9fr] xl:items-start"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-black">
-                      {item.cliente}
-                    </p>
+              {items.map((item) => {
+                const whatsappChargeUrl = buildWhatsAppChargeUrl(item)
 
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {item.responsavel || "Responsável não informado"}
-                    </p>
-
-                    <p className="mt-1 break-all text-xs text-neutral-500">
-                      {item.email_financeiro || "E-mail não informado"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span
-                      className={[
-                        "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                        getStatusClass(item.status),
-                      ].join(" ")}
-                    >
-                      {getStatusLabel(item.status)}
-                    </span>
-
-                    {item.needs_action ? (
-                      <p className="mt-2 text-xs font-semibold text-rose-700">
-                        Ação manual
+                return (
+                  <div
+                    key={item.id}
+                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.1fr_0.75fr_0.75fr_0.85fr_0.9fr_1fr] xl:items-start"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-black">
+                        {item.cliente}
                       </p>
-                    ) : null}
-                  </div>
 
-                  <div>
-                    <p className="text-sm font-semibold text-black">
-                      {formatMoney(item.valor)}
-                    </p>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {item.responsavel || "Responsável não informado"}
+                      </p>
 
-                    <p className="mt-1 text-xs text-neutral-500">
-                      Competência: {item.competencia || "—"}
-                    </p>
-                  </div>
+                      <p className="mt-1 break-all text-xs text-neutral-500">
+                        {item.email_financeiro || "E-mail não informado"}
+                      </p>
 
-                  <div>
-                    <p className="text-sm text-neutral-700">
-                      {formatDate(item.vencimento)}
-                    </p>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        WhatsApp: {item.whatsapp || "não informado"}
+                      </p>
+                    </div>
 
-                    <p className="mt-1 text-xs text-neutral-500">
-                      Pago em: {formatDate(item.pago_em)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="break-all text-xs text-neutral-700">
-                      ID: {item.bling_cobranca_id || "—"}
-                    </p>
-
-                    <p className="mt-1 break-all text-xs text-neutral-500">
-                      Doc.: {item.bling_numero_documento || "—"}
-                    </p>
-                  </div>
-
-                  <div className="xl:text-right">
-                    {item.bling_link_pagamento ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          window.open(item.bling_link_pagamento || "", "_blank")
-                        }
-                        className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                    <div>
+                      <span
+                        className={[
+                          "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+                          getStatusClass(item.status),
+                        ].join(" ")}
                       >
-                        Abrir cobrança
-                      </button>
-                    ) : (
+                        {getStatusLabel(item.status)}
+                      </span>
+
+                      <p className="mt-2 text-xs text-neutral-500">
+                        {getCycleLabel(item.ciclo_tipo)}
+                      </p>
+
+                      {item.needs_action ? (
+                        <p className="mt-2 text-xs font-semibold text-rose-700">
+                          Ação manual
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-black">
+                        {formatMoney(item.valor)}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Competência: {item.competencia || "—"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-neutral-700">
+                        {formatDate(item.vencimento)}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Pago em: {formatDate(item.pago_em)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="break-all text-xs text-neutral-700">
+                        ID: {item.bling_cobranca_id || "—"}
+                      </p>
+
+                      <p className="mt-1 break-all text-xs text-neutral-500">
+                        Doc.: {item.bling_numero_documento || "—"}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 xl:items-end xl:text-right">
+                      {item.bling_link_pagamento ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            window.open(
+                              item.bling_link_pagamento || "",
+                              "_blank",
+                            )
+                          }
+                          className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                        >
+                          Abrir cobrança
+                        </button>
+                      ) : null}
+
+                      {whatsappChargeUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            window.open(whatsappChargeUrl, "_blank")
+                          }
+                          className="inline-flex w-full items-center justify-center rounded-2xl bg-[#002198] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#00166f] xl:w-auto"
+                        >
+                          Enviar cobrança
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-2xl bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-400 xl:w-auto"
+                        >
+                          Sem WhatsApp/link
+                        </button>
+                      )}
+
                       <a
                         href="/cobrancas"
                         className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
                       >
                         Ver cobranças
                       </a>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
