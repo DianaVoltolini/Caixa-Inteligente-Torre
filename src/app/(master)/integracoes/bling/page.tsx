@@ -1,9 +1,8 @@
-// src/app/(private)/configuracoes/integracoes/bling/page.tsx
+// C:\Users\Diana Voltolini\Documents\Aplicativo Saas\Caixa Inteligente\torre\src\app\(master)\integracoes\bling\page.tsx
 
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 
 import PageContainer from "@/components/layout/PageContainer"
 import PageHeader from "@/components/layout/PageHeader"
@@ -18,6 +17,14 @@ type BlingStatusResponse = {
   error?: string
 }
 
+type BlingPingResponse = {
+  success?: boolean
+  ok?: boolean
+  connected?: boolean
+  message?: string
+  error?: string
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return "Não informado"
 
@@ -27,14 +34,60 @@ function formatDateTime(value: string | null) {
     return "Não informado"
   }
 
-  return date.toLocaleString("pt-BR")
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function getTokenAlert(expiresAt: string | null) {
+  if (!expiresAt) {
+    return {
+      tone: "warning",
+      message: "Token sem data de expiração informada. Recomendado reconectar.",
+    }
+  }
+
+  const expiration = new Date(expiresAt)
+
+  if (Number.isNaN(expiration.getTime())) {
+    return {
+      tone: "warning",
+      message: "Data de expiração inválida. Recomendado reconectar.",
+    }
+  }
+
+  const diffInHours = Math.ceil(
+    (expiration.getTime() - Date.now()) / (1000 * 60 * 60),
+  )
+
+  if (diffInHours <= 0) {
+    return {
+      tone: "danger",
+      message: "Token expirado. Reconecte o Bling antes de gerar novas cobranças.",
+    }
+  }
+
+  if (diffInHours <= 24) {
+    return {
+      tone: "warning",
+      message: "Token expira em menos de 24 horas. Recomendado reconectar.",
+    }
+  }
+
+  return {
+    tone: "success",
+    message: "Conexão operacional para geração de cobranças.",
+  }
 }
 
 export default function BlingIntegracaoPage() {
-  const router = useRouter()
-
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
+  const [testing, setTesting] = useState(false)
   const [statusData, setStatusData] = useState<BlingStatusResponse | null>(null)
   const [pageMessage, setPageMessage] = useState<string | null>(null)
 
@@ -58,6 +111,7 @@ export default function BlingIntegracaoPage() {
           expiresAt: null,
           error: data.error || "Não foi possível consultar a integração.",
         })
+
         return
       }
 
@@ -82,27 +136,39 @@ export default function BlingIntegracaoPage() {
     void loadStatus()
   }, [])
 
+  const isConnected = Boolean(
+    statusData?.connected && statusData?.status === "active",
+  )
+
   const statusLabel = useMemo(() => {
     if (!statusData) return "Carregando"
-
-    if (statusData.connected && statusData.status === "active") {
-      return "Conectado"
-    }
+    if (isConnected) return "Conectado"
 
     return "Não conectado"
-  }, [statusData])
+  }, [isConnected, statusData])
 
-  const statusToneClass = useMemo(() => {
-    if (!statusData) {
-      return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
+  const tokenAlert = useMemo(() => {
+    if (!isConnected) {
+      return {
+        tone: "danger",
+        message:
+          "Bling não conectado. As cobranças podem falhar até a reconexão.",
+      }
     }
 
-    if (statusData.connected && statusData.status === "active") {
-      return "border-emerald-200 bg-emerald-50 text-emerald-800"
-    }
+    return getTokenAlert(statusData?.expiresAt ?? null)
+  }, [isConnected, statusData?.expiresAt])
 
-    return "border-amber-200 bg-amber-50 text-amber-900"
-  }, [statusData])
+  const statusToneClass = isConnected
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : "border-rose-200 bg-rose-50 text-rose-700"
+
+  const alertToneClass =
+    tokenAlert.tone === "danger"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : tokenAlert.tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-emerald-200 bg-emerald-50 text-emerald-800"
 
   function handleConnect() {
     try {
@@ -114,18 +180,52 @@ export default function BlingIntegracaoPage() {
     }
   }
 
+  async function handleTestConnection() {
+    try {
+      setTesting(true)
+      setPageMessage(null)
+
+      const response = await fetch("/api/bling/ping", {
+        method: "GET",
+        cache: "no-store",
+      })
+
+      const payload = (await response.json()) as BlingPingResponse
+
+      if (!response.ok || payload.success === false || payload.ok === false) {
+        throw new Error(
+          payload.error ||
+            payload.message ||
+            "Não foi possível validar a conexão com o Bling.",
+        )
+      }
+
+      setPageMessage("Teste concluído: conexão com o Bling respondeu com sucesso.")
+
+      await loadStatus()
+    } catch (error) {
+      setPageMessage(
+        error instanceof Error
+          ? error.message
+          : "Erro ao testar conexão com o Bling.",
+      )
+    } finally {
+      setTesting(false)
+    }
+  }
+
   if (loading) {
     return (
       <PageContainer>
         <PageHeader
-          eyebrow="Configurações > Integrações"
-          title="Integração com Bling"
-          subtitle="Estou verificando o status da sua conexão para preparar o próximo passo."
+          eyebrow="Integrações"
+          title="Integração Bling"
+          subtitle="Verificando conexão..."
         />
 
-        <Card className="p-8 text-center">
+        <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-8 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
           <p className="text-sm text-neutral-600">
-            Carregando status da integração...
+            Carregando status da integração.
           </p>
         </Card>
       </PageContainer>
@@ -134,174 +234,119 @@ export default function BlingIntegracaoPage() {
 
   return (
     <PageContainer>
-      <div className="space-y-4">
+      <div className="space-y-6">
         <PageHeader
-          eyebrow="Configurações > Integrações"
-          title="Conecte o Bling para liberar cobranças reais"
-          subtitle="Sem essa conexão, o sistema consegue preparar a cobrança localmente, mas não consegue criar a cobrança real no Bling."
+          eyebrow="Integrações"
+          title="Integração Bling"
+          subtitle="Controle interno da conexão usada para gerar cobranças reais no Bling."
         />
 
-        <Card
-          variant="soft"
-          className="bg-[linear-gradient(135deg,#ffffff_0%,#f8fbff_55%,#eef3ff_100%)] p-5"
-        >
-          <p className="text-sm font-semibold text-[#002198]">
-            Essa integração é central para o fluxo financeiro do SaaS.
-          </p>
-
-          <p className="mt-2 text-sm leading-6 text-neutral-600">
-            O Bling é usado para criar cobranças reais, manter a operação conectada e evitar que o cliente fique travado por falhas externas.
-          </p>
-        </Card>
-
-        {pageMessage && (
-          <Card className="border border-rose-200 bg-rose-50 p-4">
-            <p className="text-sm font-medium text-rose-700">
+        {pageMessage ? (
+          <Card className="rounded-[24px] border border-[#dfe7f7] bg-white p-4 shadow-none">
+            <p className="text-sm font-semibold text-[#002198]">
               {pageMessage}
             </p>
           </Card>
-        )}
+        ) : null}
 
-        {statusData?.error && !statusData.connected && (
-          <Card className="border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-medium text-amber-900">
+        {statusData?.error && !isConnected ? (
+          <Card className="rounded-[24px] border border-rose-200 bg-rose-50 p-4 shadow-none">
+            <p className="text-sm font-semibold text-rose-700">
               {statusData.error}
             </p>
           </Card>
-        )}
-      </div>
+        ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <Card className="overflow-hidden p-0">
-          <div className="border-b border-[#dfe7f7] bg-[linear-gradient(135deg,#f8fbff_0%,#ffffff_55%,#eef3ff_100%)] p-7">
+        <div className="grid gap-6 xl:grid-cols-[1fr_0.8fr]">
+          <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
               Status da integração
             </p>
 
-            <h2 className="mt-3 text-3xl font-semibold text-black">
-              {statusLabel}
-            </h2>
-
-            <p className="mt-3 text-sm leading-7 text-neutral-600">
-              {statusData?.connected
-                ? "Sua integração central com o Bling está ativa. Isso permite criar cobranças reais e seguir com o fluxo de assinatura sem travas."
-                : "Sua integração central com o Bling ainda não está ativa. Enquanto isso não for concluído, as cobranças não conseguem ser criadas de verdade no Bling."}
-            </p>
-          </div>
-
-          <div className="space-y-5 p-7">
-            <div className={`rounded-[24px] border p-5 text-sm ${statusToneClass}`}>
-              <p className="font-semibold">
-                {statusData?.connected
-                  ? "Integração pronta para uso"
-                  : "Integração pendente"}
-              </p>
-
-              <p className="mt-2 leading-6">
-                {statusData?.connected
-                  ? "Agora o sistema já pode autenticar, criar contatos e gerar cobranças reais no Bling."
-                  : "Conecte o Bling agora para liberar a geração de cobranças reais e concluir o fluxo de assinatura sem bloqueios."}
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[24px] border border-[#dfe7f7] bg-[#f8fbff] p-5">
-                <p className="text-xs text-neutral-600">Situação</p>
-
-                <p className="mt-1 text-base font-semibold text-black">
-                  {statusLabel}
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              <div className={`rounded-[24px] border p-5 ${statusToneClass}`}>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em]">
+                  Status
                 </p>
+
+                <p className="mt-2 text-2xl font-bold">{statusLabel}</p>
               </div>
 
               <div className="rounded-[24px] border border-[#dfe7f7] bg-[#f8fbff] p-5">
-                <p className="text-xs text-neutral-600">Expiração do token</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#002198]">
+                  Expira em
+                </p>
 
-                <p className="mt-1 text-base font-semibold text-black">
+                <p className="mt-2 text-base font-bold text-black">
                   {formatDateTime(statusData?.expiresAt ?? null)}
                 </p>
               </div>
-            </div>
 
-            <Card variant="soft" className="p-5">
-              <p className="text-sm font-semibold text-[#002198]">
-                Por que isso importa
-              </p>
+              <div className="rounded-[24px] border border-[#dfe7f7] bg-[#f8fbff] p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#002198]">
+                  Uso
+                </p>
 
-              <p className="mt-2 text-sm leading-7 text-neutral-700">
-                A cobrança da assinatura depende dessa conexão para nascer corretamente no Bling. Quando a integração está ativa, o Caixa Inteligente consegue seguir o fluxo financeiro com mais segurança.
-              </p>
-            </Card>
-          </div>
-        </Card>
-
-        <Card className="p-7">
-          <div className="space-y-6">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                Próximo passo
-              </p>
-
-              <h2 className="mt-3 text-3xl font-semibold text-black">
-                {statusData?.connected
-                  ? "Revisar ou reconectar"
-                  : "Conectar com Bling"}
-              </h2>
-
-              <p className="mt-3 text-sm leading-7 text-neutral-600">
-                {statusData?.connected
-                  ? "Se quiser renovar a autorização ou garantir que a conexão continua saudável, você pode reconectar a integração."
-                  : "Clique abaixo para iniciar a autorização OAuth do Bling e salvar a integração central que o sistema precisa para gerar cobranças reais."}
-              </p>
-            </div>
-
-            <div className="rounded-[28px] border border-[#dfe7f7] bg-[#f8fbff] p-5">
-              <div className="space-y-3">
-                <div className="rounded-[24px] border border-[#dfe7f7] bg-white p-4">
-                  <p className="text-sm font-semibold text-black">
-                    O que essa conexão libera
-                  </p>
-
-                  <p className="mt-1 text-sm leading-6 text-neutral-600">
-                    Criação de contatos no Bling, geração de cobrança real e continuidade do fluxo de assinatura.
-                  </p>
-                </div>
-
-                <div className="rounded-[24px] border border-[#dfe7f7] bg-white p-4">
-                  <p className="text-sm font-semibold text-black">
-                    Quando fazer isso
-                  </p>
-
-                  <p className="mt-1 text-sm leading-6 text-neutral-600">
-                    Agora. Sem essa autorização, a cobrança pode até ser criada localmente, mas não nasce de verdade no Bling.
-                  </p>
-                </div>
+                <p className="mt-2 text-base font-bold text-black">
+                  Cobranças
+                </p>
               </div>
+            </div>
 
+            <div className={`mt-5 rounded-[24px] border p-4 ${alertToneClass}`}>
+              <p className="text-sm font-semibold">{tokenAlert.message}</p>
+            </div>
+          </Card>
+
+          <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-6 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
+              Ações
+            </p>
+
+            <h2 className="mt-3 text-2xl font-bold text-black">
+              Manter conexão ativa
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-neutral-600">
+              Use esta tela apenas para testar ou renovar a autorização do
+              Bling.
+            </p>
+
+            <div className="mt-6 space-y-3">
               <Button
                 type="button"
                 variant="primary"
                 fullWidth
                 onClick={handleConnect}
                 loading={connecting}
-                className="mt-5 py-3.5"
+                className="py-3.5"
               >
-                {statusData?.connected
-                  ? "Reconectar com Bling"
-                  : "Conectar com Bling"}
+                {isConnected ? "Reconectar com Bling" : "Conectar com Bling"}
               </Button>
 
               <Button
                 type="button"
                 variant="secondary"
                 fullWidth
-                onClick={() => router.push("/configuracoes")}
-                className="mt-3 py-3.5"
+                onClick={() => void handleTestConnection()}
+                loading={testing}
+                className="py-3.5"
               >
-                Voltar para Configurações
+                Testar conexão
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                fullWidth
+                onClick={() => void loadStatus()}
+                className="py-3.5"
+              >
+                Atualizar status
               </Button>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
       </div>
     </PageContainer>
   )
