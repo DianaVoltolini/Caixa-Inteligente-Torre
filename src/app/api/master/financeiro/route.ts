@@ -85,15 +85,10 @@ function normalizeStatus(value: unknown) {
   return status
 }
 
-function onlyNumbers(value: string | null) {
-  return String(value ?? "").replace(/\D/g, "")
-}
-
 function toDateInput(value: string | null) {
   const clean = String(value ?? "").trim()
 
   if (!clean) return null
-
   if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return null
 
   return clean
@@ -128,44 +123,26 @@ function isNeedsAction(cobranca: CobrancaRow) {
   return false
 }
 
-function getDefaultStartDate() {
-  const date = new Date()
-  date.setDate(1)
-
-  return date.toISOString().substring(0, 10)
-}
-
-function getDefaultEndDate() {
-  const date = new Date()
-
-  return date.toISOString().substring(0, 10)
-}
-
-function getCurrentCompetencia() {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-
-  return `${date.getFullYear()}-${month}`
-}
-
 function matchesSearch(item: FinanceiroItem, search: string) {
   if (!search) return true
 
-  const content = normalizeText([
-    item.cliente,
-    item.responsavel,
-    item.email_financeiro,
-    item.whatsapp,
-    item.status,
-    item.sync_status,
-    item.sync_error,
-    item.plano,
-    item.forma_pagamento,
-    item.competencia,
-    item.bling_cobranca_id,
-    item.bling_numero_documento,
-    item.bling_status_raw,
-  ].join(" "))
+  const content = normalizeText(
+    [
+      item.cliente,
+      item.responsavel,
+      item.email_financeiro,
+      item.whatsapp,
+      item.status,
+      item.sync_status,
+      item.sync_error,
+      item.plano,
+      item.forma_pagamento,
+      item.competencia,
+      item.bling_cobranca_id,
+      item.bling_numero_documento,
+      item.bling_status_raw,
+    ].join(" "),
+  )
 
   return content.includes(search)
 }
@@ -174,10 +151,18 @@ function matchesStatus(item: FinanceiroItem, statusFilter: string) {
   const status = normalizeStatus(item.status)
 
   if (!statusFilter || statusFilter === "todos") return true
-  if (statusFilter === "a_receber") return status === "pending" || status === "overdue"
-  if (statusFilter === "vencido") {
-    return status === "overdue" || (status === "pending" && isPastDate(item.vencimento))
+
+  if (statusFilter === "a_receber") {
+    return status === "pending" || status === "overdue"
   }
+
+  if (statusFilter === "vencido") {
+    return (
+      status === "overdue" ||
+      (status === "pending" && isPastDate(item.vencimento))
+    )
+  }
+
   if (statusFilter === "needs_action") return item.needs_action
 
   return status === statusFilter
@@ -187,6 +172,7 @@ function getSummary(items: FinanceiroItem[]) {
   return items.reduce(
     (summary, item) => {
       const status = normalizeStatus(item.status)
+      const syncStatus = normalizeStatus(item.sync_status)
       const valor = Number(item.valor ?? 0)
 
       summary.totalCobrancas += 1
@@ -203,11 +189,14 @@ function getSummary(items: FinanceiroItem[]) {
         summary.recebido += valor
       }
 
-      if (status === "overdue" || (status === "pending" && isPastDate(item.vencimento))) {
+      if (
+        status === "overdue" ||
+        (status === "pending" && isPastDate(item.vencimento))
+      ) {
         summary.vencido += valor
       }
 
-      if (status === "error" || normalizeStatus(item.sync_status) === "error") {
+      if (status === "error" || syncStatus === "error") {
         summary.erros += valor
       }
 
@@ -238,6 +227,7 @@ export async function GET(request: NextRequest) {
     }
 
     const search = normalizeText(request.nextUrl.searchParams.get("search"))
+
     const statusFilter = normalizeStatus(
       request.nextUrl.searchParams.get("status") || "todos",
     )
@@ -246,18 +236,13 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("competencia"),
     )
 
-    const dateFrom =
-      toDateInput(request.nextUrl.searchParams.get("dateFrom")) ||
-      getDefaultStartDate()
+    const dateFrom = toDateInput(request.nextUrl.searchParams.get("dateFrom"))
+    const dateTo = toDateInput(request.nextUrl.searchParams.get("dateTo"))
 
-    const dateTo =
-      toDateInput(request.nextUrl.searchParams.get("dateTo")) ||
-      getDefaultEndDate()
-
-    const limitRaw = Number(request.nextUrl.searchParams.get("limit") ?? 500)
+    const limitRaw = Number(request.nextUrl.searchParams.get("limit") ?? 800)
     const limit = Number.isFinite(limitRaw)
-      ? Math.min(Math.max(Math.floor(limitRaw), 1), 800)
-      : 500
+      ? Math.min(Math.max(Math.floor(limitRaw), 1), 1000)
+      : 800
 
     let query = supabaseAdmin
       .from("ci_cobrancas")
@@ -288,7 +273,13 @@ export async function GET(request: NextRequest) {
     if (competencia) {
       query = query.eq("competencia", competencia)
     } else {
-      query = query.gte("vencimento", dateFrom).lte("vencimento", dateTo)
+      if (dateFrom) {
+        query = query.gte("vencimento", dateFrom)
+      }
+
+      if (dateTo) {
+        query = query.lte("vencimento", dateTo)
+      }
     }
 
     const { data: cobrancas, error: cobrancasError } = await query
@@ -377,20 +368,19 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const searchedItems = items.filter((item) => matchesSearch(item, search))
-    const filteredItems = searchedItems.filter((item) =>
-      matchesStatus(item, statusFilter),
-    )
+    const filteredItems = items
+      .filter((item) => matchesSearch(item, search))
+      .filter((item) => matchesStatus(item, statusFilter))
 
     return NextResponse.json({
       ok: true,
       filters: {
         dateFrom,
         dateTo,
-        competencia: competencia || getCurrentCompetencia(),
+        competencia: competencia || null,
         usingCompetencia: Boolean(competencia),
       },
-      summary: getSummary(searchedItems),
+      summary: getSummary(filteredItems),
       data: filteredItems,
     })
   } catch (error) {
