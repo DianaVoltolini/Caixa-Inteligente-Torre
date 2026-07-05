@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation"
 import {
   Building2,
   CreditCard,
+  DollarSign,
   FileText,
   LayoutDashboard,
   Link2,
@@ -20,6 +21,11 @@ const items = [
     label: "Visão geral",
     href: "/painel",
     icon: LayoutDashboard,
+  },
+  {
+    label: "Financeiro",
+    href: "/financeiro",
+    icon: DollarSign,
   },
   {
     label: "Cobranças",
