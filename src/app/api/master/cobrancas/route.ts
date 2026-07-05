@@ -189,6 +189,32 @@ function matchesSearch(item: CobrancaResponseItem, search: string) {
   return content.includes(search)
 }
 
+function getCurrentChargeByClient(rows: CobrancaResponseItem[]) {
+  const map = new Map<string, CobrancaResponseItem>()
+
+  rows.forEach((row) => {
+    const key = row.business_id
+
+    if (!key) return
+
+    const current = map.get(key)
+
+    if (!current) {
+      map.set(key, row)
+      return
+    }
+
+    const currentDate = new Date(current.created_at || 0).getTime()
+    const rowDate = new Date(row.created_at || 0).getTime()
+
+    if (rowDate > currentDate) {
+      map.set(key, row)
+    }
+  })
+
+  return Array.from(map.values())
+}
+
 function getSummary(rows: CobrancaResponseItem[]) {
   return rows.reduce(
     (summary, cobranca) => {
@@ -353,7 +379,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const searchedRows = enrichedRows.filter((item) =>
+    const currentRows = getCurrentChargeByClient(enrichedRows)
+
+    const searchedRows = currentRows.filter((item) =>
       matchesSearch(item, search),
     )
 

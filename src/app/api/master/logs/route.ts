@@ -81,6 +81,15 @@ function getBusinessId(row: AnyRow) {
   )
 }
 
+function getSummaryKey(item: LogItem) {
+  return (
+    item.business_id ||
+    item.email ||
+    item.cliente ||
+    item.id
+  )
+}
+
 function getBusinessName(
   businessMap: Map<string, BusinessRow>,
   businessId: string | null,
@@ -379,29 +388,36 @@ function matchesStatus(item: LogItem, status: string) {
 }
 
 function getSummary(items: LogItem[]) {
-  return items.reduce(
-    (acc, item) => {
-      acc.total += 1
+  const total = new Set<string>()
+  const sucesso = new Set<string>()
+  const erro = new Set<string>()
+  const alerta = new Set<string>()
+  const cobranca = new Set<string>()
+  const assinatura = new Set<string>()
+  const cliente = new Set<string>()
 
-      if (item.status === "sucesso") acc.sucesso += 1
-      if (item.status === "erro") acc.erro += 1
-      if (item.status === "alerta") acc.alerta += 1
-      if (item.modulo === "cobranca") acc.cobranca += 1
-      if (item.modulo === "assinatura") acc.assinatura += 1
-      if (item.modulo === "cliente") acc.cliente += 1
+  items.forEach((item) => {
+    const key = getSummaryKey(item)
 
-      return acc
-    },
-    {
-      total: 0,
-      sucesso: 0,
-      erro: 0,
-      alerta: 0,
-      cobranca: 0,
-      assinatura: 0,
-      cliente: 0,
-    },
-  )
+    total.add(key)
+
+    if (item.status === "sucesso") sucesso.add(key)
+    if (item.status === "erro") erro.add(key)
+    if (item.status === "alerta") alerta.add(key)
+    if (item.modulo === "cobranca") cobranca.add(key)
+    if (item.modulo === "assinatura") assinatura.add(key)
+    if (item.modulo === "cliente") cliente.add(key)
+  })
+
+  return {
+    total: total.size,
+    sucesso: sucesso.size,
+    erro: erro.size,
+    alerta: alerta.size,
+    cobranca: cobranca.size,
+    assinatura: assinatura.size,
+    cliente: cliente.size,
+  }
 }
 
 export async function GET(request: NextRequest) {
