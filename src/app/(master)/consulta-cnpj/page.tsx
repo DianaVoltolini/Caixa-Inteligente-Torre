@@ -1,4 +1,4 @@
-// src/app/master/torre-controle/consulta-cnpj/page.tsx
+﻿// src/app/master/torre-controle/consulta-cnpj/page.tsx
 
 "use client"
 
@@ -208,7 +208,7 @@ export default function ConsultaCnpjPage() {
     setResult(null)
 
     if (cnpjNumbers.length !== 14) {
-      setError("Informe um CNPJ válido com 14 números.")
+      setError("Informe um CNPJ vÃ¡lido com 14 nÃºmeros.")
       return
     }
 
@@ -221,7 +221,7 @@ export default function ConsultaCnpjPage() {
       if (!response.ok || !payload.ok) {
         setError(
           payload.message ||
-            "Não foi possível consultar este CNPJ agora. Tente novamente."
+            "NÃ£o foi possÃ­vel consultar este CNPJ agora. Tente novamente."
         )
         return
       }
@@ -229,7 +229,7 @@ export default function ConsultaCnpjPage() {
       setResult(payload.data || null)
     } catch {
       setError(
-        "Falha ao consultar o CNPJ. Verifique sua conexão e tente novamente."
+        "Falha ao consultar o CNPJ. Verifique sua conexÃ£o e tente novamente."
       )
     } finally {
       setLoading(false)
@@ -252,11 +252,11 @@ export default function ConsultaCnpjPage() {
           <PageHeader
             eyebrow="Consulta operacional"
             title="Consulta de CNPJ"
-            subtitle="Consulte dados públicos de uma empresa para validar informações antes de seguir com cadastros, análises ou conferências internas."
+            subtitle="Consulte dados pÃºblicos de uma empresa para validar informaÃ§Ãµes antes de seguir com cadastros, anÃ¡lises ou conferÃªncias internas."
           />
 
           <Link
-            href="/master/torre-controle"
+            href="/painel"
             className="inline-flex w-fit items-center justify-center rounded-full border border-[#dfe7f7] bg-white px-5 py-3 text-sm font-semibold text-[#002198] shadow-[0_12px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
           >
             Voltar para Torre
@@ -267,7 +267,7 @@ export default function ConsultaCnpjPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                Busca rápida
+                Busca rÃ¡pida
               </p>
 
               <h2 className="mt-2 text-2xl font-bold text-black">
@@ -275,7 +275,7 @@ export default function ConsultaCnpjPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-7 text-neutral-600">
-                A consulta é apenas visual neste MVP. Nenhuma informação será
+                A consulta Ã© apenas visual neste MVP. Nenhuma informaÃ§Ã£o serÃ¡
                 salva no banco de dados.
               </p>
             </div>
@@ -323,7 +323,7 @@ export default function ConsultaCnpjPage() {
                 </h2>
 
                 <p className="mt-2 text-sm leading-7 text-neutral-600">
-                  Informações cadastrais retornadas pela base pública de CNPJ.
+                  InformaÃ§Ãµes cadastrais retornadas pela base pÃºblica de CNPJ.
                 </p>
               </div>
 
@@ -334,10 +334,10 @@ export default function ConsultaCnpjPage() {
                 />
                 <InfoItem
                   label="Nome fantasia"
-                  value={estabelecimento?.nome_fantasia || "Não informado"}
+                  value={estabelecimento?.nome_fantasia || "NÃ£o informado"}
                 />
                 <InfoItem
-                  label="Situação"
+                  label="SituaÃ§Ã£o"
                   value={estabelecimento?.situacao_cadastral}
                 />
                 <InfoItem label="Tipo" value={estabelecimento?.tipo} />
@@ -347,7 +347,7 @@ export default function ConsultaCnpjPage() {
                 />
                 <InfoItem label="Porte" value={result.porte?.descricao} />
                 <InfoItem
-                  label="Natureza jurídica"
+                  label="Natureza jurÃ­dica"
                   value={result.natureza_juridica?.descricao}
                 />
                 <InfoItem
@@ -356,11 +356,11 @@ export default function ConsultaCnpjPage() {
                 />
                 <InfoItem
                   label="Simples Nacional"
-                  value={result.simples?.simples || "Não informado"}
+                  value={result.simples?.simples || "NÃ£o informado"}
                 />
                 <InfoItem
                   label="MEI"
-                  value={result.simples?.mei || "Não informado"}
+                  value={result.simples?.mei || "NÃ£o informado"}
                 />
                 <InfoItem
                   label="Atualizado em"
@@ -372,16 +372,16 @@ export default function ConsultaCnpjPage() {
             <Card className="p-6 sm:p-8">
               <div className="mb-5">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                  Inscrição estadual
+                  InscriÃ§Ã£o estadual
                 </p>
 
                 <h2 className="mt-2 text-2xl font-bold text-black">
-                  Inscrições estaduais encontradas
+                  InscriÃ§Ãµes estaduais encontradas
                 </h2>
 
                 <p className="mt-2 text-sm leading-7 text-neutral-600">
-                  Quando a base pública retornar inscrição estadual, ela aparece
-                  aqui para conferência operacional.
+                  Quando a base pÃºblica retornar inscriÃ§Ã£o estadual, ela aparece
+                  aqui para conferÃªncia operacional.
                 </p>
               </div>
 
@@ -393,17 +393,17 @@ export default function ConsultaCnpjPage() {
                       className="rounded-[22px] border border-[#dfe7f7] bg-[#f8fbff] p-4"
                     >
                       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#002198]">
-                        {inscricao.estado?.sigla || "UF não informada"}
+                        {inscricao.estado?.sigla || "UF nÃ£o informada"}
                       </p>
 
                       <p className="mt-2 text-lg font-bold text-black">
-                        {inscricao.inscricao_estadual || "Não informada"}
+                        {inscricao.inscricao_estadual || "NÃ£o informada"}
                       </p>
 
                       <p className="mt-2 text-sm font-medium text-neutral-600">
                         {inscricao.ativo
-                          ? "Inscrição ativa"
-                          : "Inscrição inativa"}
+                          ? "InscriÃ§Ã£o ativa"
+                          : "InscriÃ§Ã£o inativa"}
                       </p>
                     </div>
                   ))}
@@ -411,7 +411,7 @@ export default function ConsultaCnpjPage() {
               ) : (
                 <div className="rounded-[22px] border border-[#dfe7f7] bg-[#f8fbff] p-5">
                   <p className="text-sm leading-6 text-neutral-600">
-                    Nenhuma inscrição estadual foi retornada para este CNPJ na
+                    Nenhuma inscriÃ§Ã£o estadual foi retornada para este CNPJ na
                     consulta atual.
                   </p>
                 </div>
@@ -421,7 +421,7 @@ export default function ConsultaCnpjPage() {
             <Card className="p-6 sm:p-8">
               <div className="mb-5">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                  Atividade econômica
+                  Atividade econÃ´mica
                 </p>
 
                 <h2 className="mt-2 text-2xl font-bold text-black">
@@ -438,7 +438,7 @@ export default function ConsultaCnpjPage() {
                 {atividadesSecundarias.length > 0 ? (
                   <div className="rounded-[22px] border border-[#dfe7f7] bg-white p-4">
                     <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#002198]">
-                      Atividades secundárias
+                      Atividades secundÃ¡rias
                     </p>
 
                     <div className="mt-3 space-y-2">
@@ -462,11 +462,11 @@ export default function ConsultaCnpjPage() {
             <Card className="p-6 sm:p-8">
               <div className="mb-5">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                  Localização e contato
+                  LocalizaÃ§Ã£o e contato
                 </p>
 
                 <h2 className="mt-2 text-2xl font-bold text-black">
-                  Endereço da empresa
+                  EndereÃ§o da empresa
                 </h2>
               </div>
 
@@ -479,7 +479,7 @@ export default function ConsultaCnpjPage() {
                 />
                 <InfoItem
                   label="Complemento"
-                  value={estabelecimento?.complemento || "Não informado"}
+                  value={estabelecimento?.complemento || "NÃ£o informado"}
                 />
                 <InfoItem label="Bairro" value={estabelecimento?.bairro} />
                 <InfoItem
@@ -498,7 +498,7 @@ export default function ConsultaCnpjPage() {
                   )}
                 />
                 <InfoItem
-                  label="Telefone secundário"
+                  label="Telefone secundÃ¡rio"
                   value={formatPhone(
                     estabelecimento?.ddd2,
                     estabelecimento?.telefone2
@@ -510,16 +510,16 @@ export default function ConsultaCnpjPage() {
             <Card className="p-6 sm:p-8">
               <div className="mb-5">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                  Quadro societário
+                  Quadro societÃ¡rio
                 </p>
 
                 <h2 className="mt-2 text-2xl font-bold text-black">
-                  Sócios encontrados
+                  SÃ³cios encontrados
                 </h2>
 
                 <p className="mt-2 text-sm leading-7 text-neutral-600">
-                  Quando a base pública retornar sócios, eles aparecerão abaixo
-                  para conferência.
+                  Quando a base pÃºblica retornar sÃ³cios, eles aparecerÃ£o abaixo
+                  para conferÃªncia.
                 </p>
               </div>
 
@@ -531,12 +531,12 @@ export default function ConsultaCnpjPage() {
                       className="rounded-[22px] border border-[#dfe7f7] bg-[#f8fbff] p-4"
                     >
                       <p className="text-sm font-bold text-black">
-                        {socio.nome || "Sócio sem nome informado"}
+                        {socio.nome || "SÃ³cio sem nome informado"}
                       </p>
 
                       <p className="mt-2 text-sm leading-6 text-neutral-600">
                         {socio.qualificacao_socio?.descricao ||
-                          "Qualificação não informada"}
+                          "QualificaÃ§Ã£o nÃ£o informada"}
                       </p>
 
                       <p className="mt-2 text-xs font-medium text-neutral-500">
@@ -548,7 +548,7 @@ export default function ConsultaCnpjPage() {
               ) : (
                 <div className="rounded-[22px] border border-[#dfe7f7] bg-[#f8fbff] p-5">
                   <p className="text-sm leading-6 text-neutral-600">
-                    Nenhum sócio foi retornado para este CNPJ na consulta atual.
+                    Nenhum sÃ³cio foi retornado para este CNPJ na consulta atual.
                   </p>
                 </div>
               )}
