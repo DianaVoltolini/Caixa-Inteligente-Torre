@@ -84,16 +84,22 @@ function onlyNumbers(value: string | null) {
 function getCurrentMonthStart() {
   const date = new Date()
   date.setDate(1)
+
   return date.toISOString().substring(0, 10)
 }
 
-function getToday() {
-  return new Date().toISOString().substring(0, 10)
+function getCurrentMonthEnd() {
+  const date = new Date()
+  date.setMonth(date.getMonth() + 1)
+  date.setDate(0)
+
+  return date.toISOString().substring(0, 10)
 }
 
 function getCurrentCompetencia() {
   const date = new Date()
   const month = String(date.getMonth() + 1).padStart(2, "0")
+
   return `${date.getFullYear()}-${month}`
 }
 
@@ -250,15 +256,15 @@ export default function FinanceiroPage() {
 
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<StatusFilter>("todos")
-  const [dateFrom, setDateFrom] = useState(getCurrentMonthStart())
-  const [dateTo, setDateTo] = useState(getToday())
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [competencia, setCompetencia] = useState("")
   const [useCompetencia, setUseCompetencia] = useState(false)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
 
-    params.set("limit", "500")
+    params.set("limit", "800")
     params.set("status", status)
 
     if (search.trim()) {
@@ -268,8 +274,13 @@ export default function FinanceiroPage() {
     if (useCompetencia && competencia.trim()) {
       params.set("competencia", competencia.trim())
     } else {
-      params.set("dateFrom", dateFrom)
-      params.set("dateTo", dateTo)
+      if (dateFrom) {
+        params.set("dateFrom", dateFrom)
+      }
+
+      if (dateTo) {
+        params.set("dateTo", dateTo)
+      }
     }
 
     return params.toString()
@@ -312,16 +323,26 @@ export default function FinanceiroPage() {
     void loadFinanceiro()
   }, [loadFinanceiro])
 
+  function applyAll() {
+    setUseCompetencia(false)
+    setDateFrom("")
+    setDateTo("")
+    setCompetencia("")
+    setStatus("todos")
+  }
+
   function applyCurrentMonth() {
     setUseCompetencia(false)
     setDateFrom(getCurrentMonthStart())
-    setDateTo(getToday())
+    setDateTo(getCurrentMonthEnd())
     setCompetencia("")
   }
 
   function applyCurrentCompetencia() {
     setUseCompetencia(true)
     setCompetencia(getCurrentCompetencia())
+    setDateFrom("")
+    setDateTo("")
   }
 
   return (
@@ -345,9 +366,8 @@ export default function FinanceiroPage() {
           <SummaryCard
             label="Total previsto"
             value={formatMoney(summary.totalPeriodo)}
-            helper="Tudo no período, sem canceladas."
+            helper="Tudo no filtro atual, sem canceladas."
             tone="blue"
-            active={status === "todos"}
             onClick={() => setStatus("todos")}
           />
 
@@ -448,7 +468,7 @@ export default function FinanceiroPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[260px_1fr_auto_auto_auto]">
+          <div className="mt-4 grid gap-4 xl:grid-cols-[260px_1fr_auto_auto_auto_auto]">
             <div className="space-y-2">
               <label className="text-sm font-medium text-black">
                 Situação
@@ -476,10 +496,22 @@ export default function FinanceiroPage() {
                   ? `Filtro por competência: ${
                       competencia || "não informada"
                     }`
-                  : `Filtro por vencimento: ${formatDate(
-                      dateFrom,
-                    )} até ${formatDate(dateTo)}`}
+                  : dateFrom || dateTo
+                    ? `Filtro por vencimento: ${
+                        dateFrom ? formatDate(dateFrom) : "início"
+                      } até ${dateTo ? formatDate(dateTo) : "hoje"}`
+                    : "Sem filtro de período: mostrando tudo"}
               </p>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={applyAll}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff]"
+              >
+                Tudo
+              </button>
             </div>
 
             <div className="flex items-end">
