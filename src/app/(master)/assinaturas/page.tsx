@@ -10,113 +10,75 @@ import { Card, Input } from "@/components/ui"
 
 type StatusFilter =
   | "todos"
-  | "attention"
-  | "trialing"
-  | "trial_ended"
-  | "active"
-  | "awaiting_payment"
-  | "grace_period"
-  | "overdue_or_blocked"
-  | "canceled"
-  | "sem_assinatura"
+  | "atencao"
+  | "trial_ativo"
+  | "trial_congelado"
+  | "trial_encerrado"
+  | "assinante_ativo"
+  | "assinante_bloqueado"
+  | "assinante_encerrado"
 
-type MasterCliente = {
-  business_id?: string | null
-  negocio?: string | null
-  name?: string | null
-  nome_responsavel?: string | null
-  email_financeiro?: string | null
-  whatsapp?: string | null
-  cliente_criado_em?: string | null
-
-  assinatura_id?: string | null
-  assinatura_status?: string | null
-  plano?: string | null
-  assinatura_valor?: number | null
-  trial_started_at?: string | null
-  trial_ends_at?: string | null
-  proximo_vencimento?: string | null
-  forma_pagamento?: string | null
-  assinatura_criada_em?: string | null
-
-  total_lancamentos?: number | null
-
-  cobranca_id?: string | null
-  cobranca_status?: string | null
-  cobranca_valor?: number | null
-  cobranca_vencimento?: string | null
-  cobranca_sync_status?: string | null
-  cobranca_ciclo_tipo?: string | null
-  cobranca_bling_id?: string | null
-  cobranca_link_pagamento?: string | null
-
-  alerta_financeiro?: string | null
+type AssinaturaItem = {
+  id: string
+  business_id: string
+  data_cadastro: string | null
+  cliente: string
+  responsavel: string | null
+  email: string | null
+  whatsapp: string | null
+  assinatura_tipo: "Trial" | "Assinante"
+  data_ativacao: string | null
+  status_code:
+    | "trial_ativo"
+    | "trial_congelado"
+    | "trial_encerrado"
+    | "assinante_ativo"
+    | "assinante_bloqueado"
+    | "assinante_encerrado"
+  status_label: string
+  status_raw: string | null
+  plano: string | null
+  valor: number | null
+  trial_started_at: string | null
+  trial_ends_at: string | null
+  tolerancia_dias: number
+  proximo_vencimento: string | null
+  cobranca_id: string | null
+  cobranca_status: string | null
+  cobranca_label: string
+  cobranca_valor: number | null
+  cobranca_vencimento: string | null
+  cobranca_link: string | null
+  cobranca_bling_id: string | null
+  cobranca_documento: string | null
+  precisa_atencao: boolean
 }
 
 type ApiResponse = {
-  ok?: boolean
-  success?: boolean
+  ok: boolean
   message?: string
-  error?: string
-  data?: MasterCliente[]
-  clientes?: MasterCliente[]
+  summary?: {
+    total: number
+    trialAtivo: number
+    trialCongelado: number
+    trialEncerrado: number
+    assinanteAtivo: number
+    assinanteBloqueado: number
+    assinanteEncerrado: number
+    atencao: number
+  }
+  data?: AssinaturaItem[]
 }
 
-type AssinaturaView = {
-  id: string
-  businessId: string
-  cliente: string
-  responsavel: string
-  email: string
-  whatsapp: string
-  plano: string
-  valor: number
-  status: string
-  rawStatus: string
-  statusLabel: string
-  trialStartedAt: string | null
-  trialEndsAt: string | null
-  diasRestantes: number | null
-  totalLancamentos: number
-  proximoVencimento: string | null
-  formaPagamento: string
-  cobrancaStatus: string
-  cobrancaVencimento: string | null
-  cobrancaValor: number | null
-  cobrancaLink: string | null
-  alertaFinanceiro: string
-  precisaAtencao: boolean
-}
-
-const TRIAL_LIMIT_DAYS = 7
-const TRIAL_LIMIT_TRANSACTIONS = 30
-const DAY_IN_MS = 1000 * 60 * 60 * 24
-
-const defaultSummary = {
+const emptySummary = {
   total: 0,
-  attention: 0,
-  trialing: 0,
-  active: 0,
-  awaitingPayment: 0,
-  overdueOrBlocked: 0,
-  canceled: 0,
-}
-
-function normalizeText(value: unknown) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-}
-
-function normalizeStatus(value: unknown) {
-  const status = normalizeText(value)
-
-  if (status === "trial") return "trialing"
-  if (status === "cancelled") return "canceled"
-
-  return status
+  trialAtivo: 0,
+  trialCongelado: 0,
+  trialEncerrado: 0,
+  assinanteAtivo: 0,
+  assinanteBloqueado: 0,
+  assinanteEncerrado: 0,
+  atencao: 0,
 }
 
 function formatDate(value: string | null) {
@@ -139,19 +101,12 @@ function formatMoney(value: number | null | undefined) {
   }).format(Number(value))
 }
 
-function calcularDiasRestantes(trialEndsAt: string | null) {
-  if (!trialEndsAt) return null
-
-  const end = new Date(`${String(trialEndsAt).substring(0, 10)}T23:59:59`)
-  const diff = end.getTime() - Date.now()
-
-  if (!Number.isFinite(diff)) return null
-
-  return Math.max(0, Math.min(TRIAL_LIMIT_DAYS, Math.ceil(diff / DAY_IN_MS)))
+function onlyNumbers(value: string | null) {
+  return String(value ?? "").replace(/\D/g, "")
 }
 
-function buildWhatsAppLink(whatsapp: string) {
-  const digits = whatsapp.replace(/\D/g, "")
+function buildWhatsAppLink(whatsapp: string | null) {
+  const digits = onlyNumbers(whatsapp)
 
   if (!digits) return null
 
@@ -160,144 +115,57 @@ function buildWhatsAppLink(whatsapp: string) {
   return `https://wa.me/${normalized}`
 }
 
-function getPaymentMethodLabel(value: string) {
-  const normalized = normalizeStatus(value)
-
-  if (normalized === "pix") return "Pix"
-  if (normalized === "boleto") return "Boleto"
-
-  return value || "—"
-}
-
-function getChargeStatusLabel(value: string) {
-  const normalized = normalizeStatus(value)
-
-  if (normalized === "pending") return "Aberta"
-  if (normalized === "overdue") return "Vencida"
-  if (normalized === "paid") return "Paga"
-  if (normalized === "canceled") return "Cancelada"
-  if (normalized === "error") return "Erro"
-
-  return value || "Sem cobrança"
-}
-
-function getStatusLabel(status: string) {
-  if (status === "active") return "Ativa"
-  if (status === "trialing") return "Em teste"
-  if (status === "trial_ended") return "Teste encerrado"
-  if (status === "awaiting_payment") return "Aguardando pagamento"
-  if (status === "grace_period") return "Em tolerância"
-  if (status === "overdue") return "Vencida"
-  if (status === "blocked") return "Bloqueada"
-  if (status === "canceled") return "Cancelada"
-
-  return "Sem assinatura"
-}
-
-function getStatusClass(status: string) {
-  if (status === "active") {
+function getAssinaturaClass(tipo: AssinaturaItem["assinatura_tipo"]) {
+  if (tipo === "Assinante") {
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
   }
 
-  if (status === "trialing") {
-    return "border-[#cfd8ff] bg-[#eef3ff] text-[#002198]"
+  return "border-[#cfd8ff] bg-[#eef3ff] text-[#002198]"
+}
+
+function getStatusClass(status: AssinaturaItem["status_code"]) {
+  if (status === "assinante_ativo" || status === "trial_ativo") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800"
   }
 
-  if (status === "awaiting_payment" || status === "grace_period") {
-    return "border-amber-200 bg-amber-50 text-amber-800"
+  if (status === "trial_congelado") {
+    return "border-amber-200 bg-amber-50 text-amber-900"
   }
 
-  if (status === "trial_ended" || status === "overdue" || status === "blocked") {
+  if (
+    status === "trial_encerrado" ||
+    status === "assinante_bloqueado"
+  ) {
     return "border-rose-200 bg-rose-50 text-rose-700"
   }
 
-  if (status === "canceled") {
+  if (status === "assinante_encerrado") {
     return "border-neutral-200 bg-neutral-50 text-neutral-700"
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-600"
+  return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
 }
 
-function isAttentionStatus(status: string) {
-  return (
-    status === "trial_ended" ||
-    status === "awaiting_payment" ||
-    status === "grace_period" ||
-    status === "overdue" ||
-    status === "blocked"
-  )
-}
+function getCobrancaClass(status: string | null) {
+  const value = String(status ?? "").toLowerCase()
 
-function resolveStatus(cliente: MasterCliente) {
-  const rawStatus = normalizeStatus(cliente.assinatura_status)
-  const diasRestantes = calcularDiasRestantes(cliente.trial_ends_at ?? null)
-  const totalLancamentos = Number(cliente.total_lancamentos ?? 0)
-
-  const trialEndedByRule =
-    rawStatus === "trialing" &&
-    (diasRestantes === 0 || totalLancamentos >= TRIAL_LIMIT_TRANSACTIONS)
-
-  if (trialEndedByRule) return "trial_ended"
-
-  if (
-    rawStatus === "trialing" ||
-    rawStatus === "active" ||
-    rawStatus === "awaiting_payment" ||
-    rawStatus === "grace_period" ||
-    rawStatus === "overdue" ||
-    rawStatus === "blocked" ||
-    rawStatus === "canceled"
-  ) {
-    return rawStatus
+  if (value === "paid") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800"
   }
 
-  return "sem_assinatura"
-}
-
-function mapClienteToAssinatura(cliente: MasterCliente): AssinaturaView {
-  const status = resolveStatus(cliente)
-  const rawStatus = normalizeStatus(cliente.assinatura_status)
-
-  return {
-    id:
-      cliente.assinatura_id ||
-      cliente.business_id ||
-      cliente.email_financeiro ||
-      crypto.randomUUID(),
-    businessId: cliente.business_id || "",
-    cliente: cliente.negocio || cliente.name || "Cliente sem nome",
-    responsavel: cliente.nome_responsavel || "Responsável não informado",
-    email: cliente.email_financeiro || "Email não informado",
-    whatsapp: cliente.whatsapp || "",
-    plano: cliente.plano || "Plano Lucro Real",
-    valor: Number(cliente.assinatura_valor ?? 29.9),
-    status,
-    rawStatus,
-    statusLabel: getStatusLabel(status),
-    trialStartedAt: cliente.trial_started_at || null,
-    trialEndsAt: cliente.trial_ends_at || null,
-    diasRestantes: calcularDiasRestantes(cliente.trial_ends_at ?? null),
-    totalLancamentos: Number(cliente.total_lancamentos ?? 0),
-    proximoVencimento: cliente.proximo_vencimento || null,
-    formaPagamento: getPaymentMethodLabel(cliente.forma_pagamento || ""),
-    cobrancaStatus: getChargeStatusLabel(cliente.cobranca_status || ""),
-    cobrancaVencimento: cliente.cobranca_vencimento || null,
-    cobrancaValor: cliente.cobranca_valor ?? null,
-    cobrancaLink: cliente.cobranca_link_pagamento || null,
-    alertaFinanceiro: cliente.alerta_financeiro || "sem_cobranca",
-    precisaAtencao: isAttentionStatus(status),
-  }
-}
-
-function matchesStatusFilter(item: AssinaturaView, statusFilter: StatusFilter) {
-  if (statusFilter === "todos") return true
-  if (statusFilter === "attention") return item.precisaAtencao
-
-  if (statusFilter === "overdue_or_blocked") {
-    return item.status === "overdue" || item.status === "blocked"
+  if (value === "pending") {
+    return "border-amber-200 bg-amber-50 text-amber-900"
   }
 
-  return item.status === statusFilter
+  if (value === "overdue" || value === "error") {
+    return "border-rose-200 bg-rose-50 text-rose-700"
+  }
+
+  if (value === "canceled") {
+    return "border-neutral-200 bg-neutral-50 text-neutral-700"
+  }
+
+  return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
 }
 
 function SummaryCard({
@@ -309,7 +177,7 @@ function SummaryCard({
 }: {
   label: string
   value: number
-  tone?: "default" | "danger" | "success" | "warning" | "blue"
+  tone?: "default" | "danger" | "success" | "warning" | "blue" | "neutral"
   active?: boolean
   onClick: () => void
 }) {
@@ -322,9 +190,11 @@ function SummaryCard({
           ? "border border-amber-200 bg-amber-50"
           : tone === "blue"
             ? "border border-[#cfd8ff] bg-[#eef3ff]"
-            : "border border-[#dfe7f7] bg-white"
+            : tone === "neutral"
+              ? "border border-neutral-200 bg-neutral-50"
+              : "border border-[#dfe7f7] bg-white"
 
-  const textClass =
+  const valueClass =
     tone === "danger"
       ? "text-rose-800"
       : tone === "success"
@@ -347,7 +217,7 @@ function SummaryCard({
         {label}
       </p>
 
-      <p className={["mt-3 text-3xl font-bold", textClass].join(" ")}>
+      <p className={["mt-3 text-3xl font-bold", valueClass].join(" ")}>
         {value}
       </p>
     </button>
@@ -355,99 +225,62 @@ function SummaryCard({
 }
 
 export default function TorreAssinaturasPage() {
-  const [clientes, setClientes] = useState<MasterCliente[]>([])
+  const [items, setItems] = useState<AssinaturaItem[]>([])
+  const [summary, setSummary] = useState(emptySummary)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos")
 
-  const loadClientes = useCallback(async () => {
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams()
+
+    params.set("status", statusFilter)
+
+    if (search.trim()) {
+      params.set("search", search.trim())
+    }
+
+    return params.toString()
+  }, [search, statusFilter])
+
+  const loadAssinaturas = useCallback(async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch("/api/master/clientes", {
+      const response = await fetch(`/api/master/assinaturas?${queryString}`, {
         method: "GET",
         cache: "no-store",
       })
 
       const payload = (await response.json()) as ApiResponse
 
-      if (!response.ok || payload?.ok === false || payload?.success === false) {
+      if (!response.ok || !payload.ok) {
         throw new Error(
-          payload?.message ||
-            payload?.error ||
-            "Não foi possível carregar as assinaturas.",
+          payload.message || "Não foi possível carregar as assinaturas.",
         )
       }
 
-      setClientes(payload.data ?? payload.clientes ?? [])
+      setItems(payload.data ?? [])
+      setSummary(payload.summary ?? emptySummary)
     } catch (loadError) {
       setError(
         loadError instanceof Error
           ? loadError.message
           : "Erro desconhecido ao carregar assinaturas.",
       )
+
+      setItems([])
+      setSummary(emptySummary)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [queryString])
 
   useEffect(() => {
-    void loadClientes()
-  }, [loadClientes])
-
-  const assinaturas = useMemo(() => {
-    return clientes.map(mapClienteToAssinatura)
-  }, [clientes])
-
-  const summary = useMemo(() => {
-    return assinaturas.reduce(
-      (acc, assinatura) => {
-        acc.total += 1
-
-        if (assinatura.precisaAtencao) acc.attention += 1
-        if (assinatura.status === "trialing") acc.trialing += 1
-        if (assinatura.status === "active") acc.active += 1
-        if (assinatura.status === "awaiting_payment") acc.awaitingPayment += 1
-
-        if (
-          assinatura.status === "overdue" ||
-          assinatura.status === "blocked" ||
-          assinatura.status === "trial_ended"
-        ) {
-          acc.overdueOrBlocked += 1
-        }
-
-        if (assinatura.status === "canceled") acc.canceled += 1
-
-        return acc
-      },
-      { ...defaultSummary },
-    )
-  }, [assinaturas])
-
-  const filtered = useMemo(() => {
-    const cleanSearch = normalizeText(search)
-
-    return assinaturas.filter((assinatura) => {
-      const matchesStatus = matchesStatusFilter(assinatura, statusFilter)
-
-      const searchable = normalizeText([
-        assinatura.cliente,
-        assinatura.responsavel,
-        assinatura.email,
-        assinatura.plano,
-        assinatura.statusLabel,
-        assinatura.formaPagamento,
-        assinatura.cobrancaStatus,
-      ].join(" "))
-
-      const matchesSearch = !cleanSearch || searchable.includes(cleanSearch)
-
-      return matchesStatus && matchesSearch
-    })
-  }, [assinaturas, search, statusFilter])
+    void loadAssinaturas()
+  }, [loadAssinaturas])
 
   return (
     <PageContainer>
@@ -455,10 +288,10 @@ export default function TorreAssinaturasPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Assinaturas"
-          subtitle="Acompanhe o acesso dos clientes: teste, assinatura ativa, aguardando pagamento, bloqueios e cancelamentos."
+          subtitle="Acompanhe cada cliente por tipo de assinatura, fase atual, cobrança e datas principais."
         />
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
           <SummaryCard
             label="Total"
             value={summary.total}
@@ -467,48 +300,56 @@ export default function TorreAssinaturasPage() {
           />
 
           <SummaryCard
-            label="Ação necessária"
-            value={summary.attention}
-            tone={summary.attention > 0 ? "danger" : "default"}
-            active={statusFilter === "attention"}
-            onClick={() => setStatusFilter("attention")}
-          />
-
-          <SummaryCard
-            label="Em teste"
-            value={summary.trialing}
-            tone="blue"
-            active={statusFilter === "trialing"}
-            onClick={() => setStatusFilter("trialing")}
-          />
-
-          <SummaryCard
-            label="Ativas"
-            value={summary.active}
+            label="Trial ativo"
+            value={summary.trialAtivo}
             tone="success"
-            active={statusFilter === "active"}
-            onClick={() => setStatusFilter("active")}
+            active={statusFilter === "trial_ativo"}
+            onClick={() => setStatusFilter("trial_ativo")}
           />
 
           <SummaryCard
-            label="Aguardando"
-            value={summary.awaitingPayment}
+            label="Trial congelado"
+            value={summary.trialCongelado}
             tone="warning"
-            active={statusFilter === "awaiting_payment"}
-            onClick={() => setStatusFilter("awaiting_payment")}
+            active={statusFilter === "trial_congelado"}
+            onClick={() => setStatusFilter("trial_congelado")}
           />
 
           <SummaryCard
-            label="Bloqueios"
-            value={summary.overdueOrBlocked}
-            tone={summary.overdueOrBlocked > 0 ? "danger" : "default"}
-            active={statusFilter === "overdue_or_blocked"}
-            onClick={() => setStatusFilter("overdue_or_blocked")}
+            label="Trial encerrado"
+            value={summary.trialEncerrado}
+            tone={summary.trialEncerrado > 0 ? "danger" : "default"}
+            active={statusFilter === "trial_encerrado"}
+            onClick={() => setStatusFilter("trial_encerrado")}
+          />
+
+          <SummaryCard
+            label="Ativos"
+            value={summary.assinanteAtivo}
+            tone="success"
+            active={statusFilter === "assinante_ativo"}
+            onClick={() => setStatusFilter("assinante_ativo")}
+          />
+
+          <SummaryCard
+            label="Bloqueados"
+            value={summary.assinanteBloqueado}
+            tone={summary.assinanteBloqueado > 0 ? "danger" : "default"}
+            active={statusFilter === "assinante_bloqueado"}
+            onClick={() => setStatusFilter("assinante_bloqueado")}
+          />
+
+          <SummaryCard
+            label="Encerrados"
+            value={summary.assinanteEncerrado}
+            tone="neutral"
+            active={statusFilter === "assinante_encerrado"}
+            onClick={() => setStatusFilter("assinante_encerrado")}
           />
         </div>
 
         <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-6">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px_auto]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px_auto]">
             <div className="space-y-2">
               <label className="text-sm font-medium text-black">
                 Buscar assinatura
@@ -517,7 +358,7 @@ export default function TorreAssinaturasPage() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Cliente, responsável, e-mail, plano ou status"
+                placeholder="Cliente, responsável, e-mail, WhatsApp, assinatura ou status"
                 className="h-11"
               />
             </div>
@@ -533,22 +374,20 @@ export default function TorreAssinaturasPage() {
                 className="h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
               >
                 <option value="todos">Todos</option>
-                <option value="attention">Ação necessária</option>
-                <option value="trialing">Em teste</option>
-                <option value="trial_ended">Teste encerrado</option>
-                <option value="active">Ativas</option>
-                <option value="awaiting_payment">Aguardando pagamento</option>
-                <option value="grace_period">Em tolerância</option>
-                <option value="overdue_or_blocked">Vencidas/Bloqueadas</option>
-                <option value="canceled">Canceladas</option>
-                <option value="sem_assinatura">Sem assinatura</option>
+                <option value="atencao">Ação necessária</option>
+                <option value="trial_ativo">Trial ativo</option>
+                <option value="trial_congelado">Trial congelado</option>
+                <option value="trial_encerrado">Trial encerrado</option>
+                <option value="assinante_ativo">Assinante ativo</option>
+                <option value="assinante_bloqueado">Assinante bloqueado</option>
+                <option value="assinante_encerrado">Assinante encerrado</option>
               </select>
             </div>
 
             <div className="flex flex-col gap-2 xl:items-end xl:justify-end">
               <button
                 type="button"
-                onClick={() => void loadClientes()}
+                onClick={() => void loadAssinaturas()}
                 disabled={loading}
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -569,12 +408,8 @@ export default function TorreAssinaturasPage() {
             <p className="text-base font-semibold text-black">
               Carregando assinaturas...
             </p>
-
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Estou conferindo o acesso dos clientes.
-            </p>
           </Card>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <p className="text-base font-semibold text-black">
               Nenhuma assinatura encontrada.
@@ -586,40 +421,65 @@ export default function TorreAssinaturasPage() {
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.2fr_0.85fr_0.75fr_0.85fr_0.85fr_0.9fr_0.8fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="hidden grid-cols-[0.75fr_1fr_1fr_0.75fr_0.85fr_0.85fr_0.9fr_0.75fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+              <span>Data</span>
               <span>Cliente</span>
-              <span>Assinatura</span>
-              <span>Teste</span>
-              <span>Próximo vencimento</span>
-              <span>Cobrança</span>
               <span>Contato</span>
+              <span>Assinatura</span>
+              <span>Data de ativação</span>
+              <span>Status</span>
+              <span>Cobrança</span>
               <span className="text-right">Ação</span>
             </div>
 
             <div className="divide-y divide-[#dfe7f7]">
-              {filtered.map((assinatura) => {
-                const whatsappLink = buildWhatsAppLink(assinatura.whatsapp)
+              {items.map((item) => {
+                const whatsappLink = buildWhatsAppLink(item.whatsapp)
 
                 return (
                   <div
-                    key={assinatura.id}
-                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.2fr_0.85fr_0.75fr_0.85fr_0.85fr_0.9fr_0.8fr] xl:items-start"
+                    key={item.id}
+                    className="grid gap-4 px-5 py-5 xl:grid-cols-[0.75fr_1fr_1fr_0.75fr_0.85fr_0.85fr_0.9fr_0.75fr] xl:items-start"
                   >
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Data
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Cadastro
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-black">
+                        {formatDate(item.data_cadastro)}
+                      </p>
+                    </div>
+
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
                         Cliente
                       </p>
 
                       <p className="mt-1 text-sm font-semibold text-black">
-                        {assinatura.cliente}
+                        {item.cliente}
                       </p>
 
                       <p className="mt-1 text-xs text-neutral-500">
-                        {assinatura.responsavel}
+                        {item.responsavel || "Responsável não informado"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Contato
                       </p>
 
                       <p className="mt-1 break-all text-xs text-neutral-500">
-                        {assinatura.email}
+                        {item.email || "E-mail não informado"}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {item.whatsapp || "WhatsApp não informado"}
                       </p>
                     </div>
 
@@ -631,55 +491,58 @@ export default function TorreAssinaturasPage() {
                       <span
                         className={[
                           "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          getStatusClass(assinatura.status),
+                          getAssinaturaClass(item.assinatura_tipo),
                         ].join(" ")}
                       >
-                        {assinatura.statusLabel}
+                        {item.assinatura_tipo}
                       </span>
 
                       <p className="mt-2 text-xs text-neutral-500">
-                        {assinatura.plano}
+                        {item.plano || "Plano não informado"}
                       </p>
 
                       <p className="mt-1 text-xs text-neutral-500">
-                        {formatMoney(assinatura.valor)} ·{" "}
-                        {assinatura.formaPagamento}
+                        {formatMoney(item.valor)}
                       </p>
                     </div>
 
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Teste
+                        Data de ativação
                       </p>
 
-                      {assinatura.diasRestantes === null ? (
-                        <p className="mt-1 text-sm text-neutral-500">—</p>
+                      <p className="mt-1 text-sm font-semibold text-black">
+                        {formatDate(item.data_ativacao)}
+                      </p>
+
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Primeiro pagamento
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Status
+                      </p>
+
+                      <span
+                        className={[
+                          "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+                          getStatusClass(item.status_code),
+                        ].join(" ")}
+                      >
+                        {item.status_label}
+                      </span>
+
+                      {item.status_code.startsWith("trial") ? (
+                        <p className="mt-2 text-xs text-neutral-500">
+                          Trial até {formatDate(item.trial_ends_at)}
+                        </p>
                       ) : (
-                        <>
-                          <p className="mt-1 text-sm font-semibold text-black">
-                            {assinatura.diasRestantes} dias
-                          </p>
-
-                          <p className="mt-1 text-xs text-neutral-500">
-                            {assinatura.totalLancamentos}/
-                            {TRIAL_LIMIT_TRANSACTIONS} lançamentos
-                          </p>
-
-                          <p className="mt-1 text-xs text-neutral-500">
-                            até {formatDate(assinatura.trialEndsAt)}
-                          </p>
-                        </>
+                        <p className="mt-2 text-xs text-neutral-500">
+                          Próx. venc.: {formatDate(item.proximo_vencimento)}
+                        </p>
                       )}
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Próximo vencimento
-                      </p>
-
-                      <p className="mt-1 text-sm text-neutral-700">
-                        {formatDate(assinatura.proximoVencimento)}
-                      </p>
                     </div>
 
                     <div>
@@ -687,26 +550,21 @@ export default function TorreAssinaturasPage() {
                         Cobrança
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {assinatura.cobrancaStatus}
+                      <span
+                        className={[
+                          "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
+                          getCobrancaClass(item.cobranca_status),
+                        ].join(" ")}
+                      >
+                        {item.cobranca_label}
+                      </span>
+
+                      <p className="mt-2 text-xs text-neutral-500">
+                        Venc.: {formatDate(item.cobranca_vencimento)}
                       </p>
 
                       <p className="mt-1 text-xs text-neutral-500">
-                        Venc.: {formatDate(assinatura.cobrancaVencimento)}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {formatMoney(assinatura.cobrancaValor)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Contato
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {assinatura.whatsapp || "WhatsApp não informado"}
+                        {formatMoney(item.cobranca_valor)}
                       </p>
                     </div>
 
@@ -714,12 +572,6 @@ export default function TorreAssinaturasPage() {
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
                         Ação
                       </p>
-
-                      {assinatura.precisaAtencao ? (
-                        <span className="mb-2 inline-flex rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
-                          Ação necessária
-                        </span>
-                      ) : null}
 
                       <div className="mt-2 flex flex-col gap-2">
                         <a
@@ -729,9 +581,9 @@ export default function TorreAssinaturasPage() {
                           Ver cobranças
                         </a>
 
-                        {assinatura.cobrancaLink ? (
+                        {item.cobranca_link ? (
                           <a
-                            href={assinatura.cobrancaLink}
+                            href={item.cobranca_link}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
