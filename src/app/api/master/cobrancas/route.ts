@@ -14,6 +14,10 @@ type StatusFilter =
   | "canceled"
   | "needs_action"
 
+type TipoFilter = "todos" | "ativacao" | "renovacao"
+
+type TipoCode = "ativacao" | "renovacao" | "outro"
+
 type CobrancaRow = {
   id: string
   business_id: string
@@ -25,6 +29,7 @@ type CobrancaRow = {
   sync_error: string | null
   ciclo_tipo: string | null
   competencia: string | null
+  gerada_em: string | null
   created_at: string | null
   pago_em: string | null
   bling_cobranca_id: string | null
@@ -75,8 +80,12 @@ type CobrancaResponseItem = {
   sync_status: string | null
   sync_error: string | null
   ciclo_tipo: string | null
+  tipo_code: TipoCode
+  tipo_label: string
   competencia: string | null
+  gerada_em: string | null
   created_at: string | null
+  data_criacao: string | null
   pago_em: string | null
   bling_cobranca_id: string | null
   bling_numero_documento: string | null
@@ -102,6 +111,29 @@ function normalizeStatus(value: unknown) {
   return status
 }
 
+function toDateInput(value: string | null) {
+  const clean = String(value ?? "").trim()
+
+  if (!clean) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return null
+
+  return clean
+}
+
+function toDateOnly(value: string | null) {
+  if (!value) return null
+
+  return String(value).substring(0, 10)
+}
+
+function getTimestamp(value: string | null) {
+  if (!value) return 0
+
+  const date = new Date(value)
+
+  return Number.isFinite(date.getTime()) ? date.getTime() : 0
+}
+
 function isPastDate(value: string | null) {
   if (!value) return false
 
@@ -112,6 +144,56 @@ function isPastDate(value: string | null) {
   date.setHours(0, 0, 0, 0)
 
   return Number.isFinite(date.getTime()) && date < today
+}
+
+function getChargeCreatedAt(cobranca: CobrancaRow) {
+  return cobranca.gerada_em || cobranca.created_at || null
+}
+
+function getMetadataText(metadata: Record<string, unknown> | null) {
+  if (!metadata) return ""
+
+  return normalizeText(JSON.stringify(metadata))
+}
+
+function getTipoCode(
+  cicloTipo: string | null,
+  metadata: Record<string, unknown> | null,
+): TipoCode {
+  const normalized = normalizeText(cicloTipo)
+  const metadataText = getMetadataText(metadata)
+  const text = `${normalized} ${metadataText}`
+
+  if (
+    text.includes("first_charge") ||
+    text.includes("first") ||
+    text.includes("ativacao") ||
+    text.includes("ativação") ||
+    text.includes("ativ")
+  ) {
+    return "ativacao"
+  }
+
+  if (
+    text.includes("recurring") ||
+    text.includes("recurrence") ||
+    text.includes("mensalidade") ||
+    text.includes("renovacao") ||
+    text.includes("renovação") ||
+    text.includes("renov") ||
+    text.includes("recorr")
+  ) {
+    return "renovacao"
+  }
+
+  return "outro"
+}
+
+function getTipoLabel(tipo: TipoCode, originalValue: string | null) {
+  if (tipo === "ativacao") return "Ativação"
+  if (tipo === "renovacao") return "Renovação"
+
+  return originalValue || "Não informado"
 }
 
 function isNeedsAction(cobranca: CobrancaRow) {
@@ -148,12 +230,22 @@ function getStatusFilter(request: NextRequest): StatusFilter {
   return "todos"
 }
 
+function getTipoFilter(request: NextRequest): TipoFilter {
+  const value = normalizeText(request.nextUrl.searchParams.get("tipo"))
+
+  if (value === "ativacao" || value === "renovacao") {
+    return value
+  }
+
+  return "todos"
+}
+
 function getLimit(request: NextRequest) {
-  const raw = Number(request.nextUrl.searchParams.get("limit") ?? 300)
+  const raw = Number(request.nextUrl.searchParams.get("limit") ?? 1000)
 
-  if (!Number.isFinite(raw) || raw <= 0) return 300
+  if (!Number.isFinite(raw) || raw <= 0) return 1000
 
-  return Math.min(500, Math.floor(raw))
+  return Math.min(2000, Math.floor(raw))
 }
 
 function matchesStatusFilter(item: CobrancaResponseItem, status: StatusFilter) {
@@ -161,30 +253,59 @@ function matchesStatusFilter(item: CobrancaResponseItem, status: StatusFilter) {
 
   if (status === "todos") return true
   if (status === "needs_action") return item.needs_action
+  if (status === "pending") return normalized === "pending" && !isPastDate(item.vencimento)
+  if (status === "overdue") {
+    return normalized === "overdue" || (normalized === "pending" && isPastDate(item.vencimento))
+  }
 
   return normalized === status
+}
+
+function matchesTipoFilter(item: CobrancaResponseItem, tipo: TipoFilter) {
+  if (tipo === "todos") return true
+
+  return item.tipo_code === tipo
+}
+
+function matchesDateFilter(
+  item: CobrancaResponseItem,
+  dateFrom: string | null,
+  dateTo: string | null,
+) {
+  if (!dateFrom && !dateTo) return true
+
+  const dataCriacao = toDateOnly(item.data_criacao)
+
+  if (!dataCriacao) return false
+  if (dateFrom && dataCriacao < dateFrom) return false
+  if (dateTo && dataCriacao > dateTo) return false
+
+  return true
 }
 
 function matchesSearch(item: CobrancaResponseItem, search: string) {
   if (!search) return true
 
-  const content = normalizeText([
-    item.cliente,
-    item.responsavel,
-    item.email_financeiro,
-    item.whatsapp,
-    item.assinatura_status,
-    item.plano,
-    item.forma_pagamento,
-    item.status,
-    item.sync_status,
-    item.sync_error,
-    item.ciclo_tipo,
-    item.competencia,
-    item.bling_cobranca_id,
-    item.bling_numero_documento,
-    item.bling_status_raw,
-  ].join(" "))
+  const content = normalizeText(
+    [
+      item.cliente,
+      item.responsavel,
+      item.email_financeiro,
+      item.whatsapp,
+      item.assinatura_status,
+      item.plano,
+      item.forma_pagamento,
+      item.status,
+      item.sync_status,
+      item.sync_error,
+      item.ciclo_tipo,
+      item.tipo_label,
+      item.competencia,
+      item.bling_cobranca_id,
+      item.bling_numero_documento,
+      item.bling_status_raw,
+    ].join(" "),
+  )
 
   return content.includes(search)
 }
@@ -204,8 +325,15 @@ function getCurrentChargeByClient(rows: CobrancaResponseItem[]) {
       return
     }
 
-    const currentDate = new Date(current.created_at || 0).getTime()
-    const rowDate = new Date(row.created_at || 0).getTime()
+    const currentDate =
+      getTimestamp(current.data_criacao) ||
+      getTimestamp(current.created_at) ||
+      getTimestamp(current.vencimento)
+
+    const rowDate =
+      getTimestamp(row.data_criacao) ||
+      getTimestamp(row.created_at) ||
+      getTimestamp(row.vencimento)
 
     if (rowDate > currentDate) {
       map.set(key, row)
@@ -219,20 +347,44 @@ function getSummary(rows: CobrancaResponseItem[]) {
   return rows.reduce(
     (summary, cobranca) => {
       const status = normalizeStatus(cobranca.status)
+      const syncStatus = normalizeStatus(cobranca.sync_status)
 
       summary.total += 1
 
-      if (status === "pending") summary.pending += 1
-      if (status === "overdue") summary.overdue += 1
+      if (cobranca.tipo_code === "ativacao") summary.ativacao += 1
+      if (cobranca.tipo_code === "renovacao") summary.renovacao += 1
+
+      if (status === "canceled") {
+        summary.canceled += 1
+        summary.cancelamento += 1
+      }
+
+      if (status === "pending" && !isPastDate(cobranca.vencimento)) {
+        summary.pending += 1
+      }
+
+      if (
+        status === "overdue" ||
+        (status === "pending" && isPastDate(cobranca.vencimento))
+      ) {
+        summary.overdue += 1
+      }
+
       if (status === "paid") summary.paid += 1
-      if (status === "error") summary.error += 1
-      if (status === "canceled") summary.canceled += 1
+
+      if (status === "error" || syncStatus === "error") {
+        summary.error += 1
+      }
+
       if (cobranca.needs_action) summary.needsAction += 1
 
       return summary
     },
     {
       total: 0,
+      ativacao: 0,
+      renovacao: 0,
+      cancelamento: 0,
       pending: 0,
       overdue: 0,
       paid: 0,
@@ -252,8 +404,11 @@ export async function GET(request: NextRequest) {
     }
 
     const statusFilter = getStatusFilter(request)
+    const tipoFilter = getTipoFilter(request)
     const limit = getLimit(request)
     const search = normalizeText(request.nextUrl.searchParams.get("search"))
+    const dateFrom = toDateInput(request.nextUrl.searchParams.get("dateFrom"))
+    const dateTo = toDateInput(request.nextUrl.searchParams.get("dateTo"))
 
     const { data: cobrancas, error: cobrancasError } = await supabaseAdmin
       .from("ci_cobrancas")
@@ -269,6 +424,7 @@ export async function GET(request: NextRequest) {
           sync_error,
           ciclo_tipo,
           competencia,
+          gerada_em,
           created_at,
           pago_em,
           bling_cobranca_id,
@@ -348,6 +504,8 @@ export async function GET(request: NextRequest) {
       const assinatura = cobranca.assinatura_id
         ? assinaturaMap.get(cobranca.assinatura_id) ?? null
         : null
+      const tipoCode = getTipoCode(cobranca.ciclo_tipo, cobranca.metadata)
+      const dataCriacao = getChargeCreatedAt(cobranca)
 
       return {
         id: cobranca.id,
@@ -367,8 +525,12 @@ export async function GET(request: NextRequest) {
         sync_status: cobranca.sync_status,
         sync_error: cobranca.sync_error,
         ciclo_tipo: cobranca.ciclo_tipo,
+        tipo_code: tipoCode,
+        tipo_label: getTipoLabel(tipoCode, cobranca.ciclo_tipo),
         competencia: cobranca.competencia,
+        gerada_em: cobranca.gerada_em,
         created_at: cobranca.created_at,
+        data_criacao: dataCriacao,
         pago_em: cobranca.pago_em,
         bling_cobranca_id: cobranca.bling_cobranca_id,
         bling_numero_documento: cobranca.bling_numero_documento,
@@ -385,13 +547,21 @@ export async function GET(request: NextRequest) {
       matchesSearch(item, search),
     )
 
-    const filteredRows = searchedRows.filter((item) =>
+    const typedRows = searchedRows.filter((item) =>
+      matchesTipoFilter(item, tipoFilter),
+    )
+
+    const datedRows = typedRows.filter((item) =>
+      matchesDateFilter(item, dateFrom, dateTo),
+    )
+
+    const filteredRows = datedRows.filter((item) =>
       matchesStatusFilter(item, statusFilter),
     )
 
     return NextResponse.json({
       ok: true,
-      summary: getSummary(searchedRows),
+      summary: getSummary(datedRows),
       data: filteredRows,
     })
   } catch (error) {
