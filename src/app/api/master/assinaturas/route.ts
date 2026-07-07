@@ -12,6 +12,7 @@ type BusinessRow = {
   email_financeiro: string | null
   whatsapp: string | null
   created_at: string | null
+  [key: string]: unknown
 }
 
 type AssinaturaRow = {
@@ -45,7 +46,7 @@ type CobrancaRow = {
   created_at: string | null
 }
 
-type AssinaturaTipo = "Trial" | "Assinante"
+type PlanoTipo = "Trial" | "Plano"
 
 type StatusCode =
   | "trial_ativo"
@@ -58,18 +59,21 @@ type StatusCode =
 type AssinaturaItem = {
   id: string
   business_id: string
-  data_cadastro: string | null
   cliente: string
   responsavel: string | null
   email: string | null
   whatsapp: string | null
-  assinatura_tipo: AssinaturaTipo
+  endereco_cobranca: string | null
+  plano_tipo: PlanoTipo
+  plano_label: string
+  plano_valor: number | null
+  data_cadastro: string | null
   data_ativacao: string | null
+  data_referencia: string | null
+  data_referencia_label: "Cadastro" | "Ativação"
   status_code: StatusCode
   status_label: string
   status_raw: string | null
-  plano: string | null
-  valor: number | null
   trial_started_at: string | null
   trial_ends_at: string | null
   tolerancia_dias: number
@@ -77,6 +81,8 @@ type AssinaturaItem = {
   cobranca_id: string | null
   cobranca_status: string | null
   cobranca_label: string
+  cobranca_emitida: boolean
+  cobranca_emissao_label: "Emitida" | "Pendente de Emissão"
   cobranca_valor: number | null
   cobranca_vencimento: string | null
   cobranca_link: string | null
@@ -100,6 +106,21 @@ function normalizeStatus(value: unknown) {
   if (status === "trial") return "trialing"
 
   return status
+}
+
+function toDateInput(value: string | null) {
+  const clean = String(value ?? "").trim()
+
+  if (!clean) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return null
+
+  return clean
+}
+
+function toDateOnly(value: string | null) {
+  if (!value) return null
+
+  return String(value).substring(0, 10)
 }
 
 function getDateTime(value: string | null) {
@@ -204,11 +225,135 @@ function getFirstPaidChargeByBusiness(rows: CobrancaRow[]) {
   return map
 }
 
+function getStringValue(value: unknown) {
+  if (value === null || value === undefined) return null
+
+  const text = String(value).trim()
+
+  return text || null
+}
+
+function pickFirstString(row: BusinessRow, keys: string[]) {
+  for (const key of keys) {
+    const value = getStringValue(row[key])
+
+    if (value) return value
+  }
+
+  return null
+}
+
+function formatCep(value: string | null) {
+  if (!value) return null
+
+  const digits = value.replace(/\D/g, "")
+
+  if (digits.length !== 8) return value
+
+  return `${digits.substring(0, 5)}-${digits.substring(5)}`
+}
+
+function getBillingAddress(business: BusinessRow) {
+  const logradouro = pickFirstString(business, [
+    "billing_logradouro",
+    "billing_street",
+    "billing_address",
+    "billing_endereco",
+    "endereco_cobranca_logradouro",
+    "endereco_logradouro",
+    "logradouro",
+    "rua",
+    "street",
+    "address_street",
+  ])
+
+  const numero = pickFirstString(business, [
+    "billing_numero",
+    "billing_number",
+    "endereco_cobranca_numero",
+    "endereco_numero",
+    "numero",
+    "number",
+    "address_number",
+  ])
+
+  const complemento = pickFirstString(business, [
+    "billing_complemento",
+    "billing_complement",
+    "endereco_cobranca_complemento",
+    "endereco_complemento",
+    "complemento",
+    "complement",
+    "address_complement",
+  ])
+
+  const bairro = pickFirstString(business, [
+    "billing_bairro",
+    "billing_neighborhood",
+    "endereco_cobranca_bairro",
+    "endereco_bairro",
+    "bairro",
+    "neighborhood",
+    "address_neighborhood",
+  ])
+
+  const cidade = pickFirstString(business, [
+    "billing_cidade",
+    "billing_city",
+    "endereco_cobranca_cidade",
+    "endereco_cidade",
+    "cidade",
+    "city",
+    "address_city",
+  ])
+
+  const estado = pickFirstString(business, [
+    "billing_estado",
+    "billing_state",
+    "billing_uf",
+    "endereco_cobranca_estado",
+    "endereco_estado",
+    "estado",
+    "uf",
+    "state",
+    "address_state",
+  ])
+
+  const cep = formatCep(
+    pickFirstString(business, [
+      "billing_cep",
+      "billing_zipcode",
+      "billing_zip_code",
+      "endereco_cobranca_cep",
+      "endereco_cep",
+      "cep",
+      "zipcode",
+      "zip_code",
+      "address_zipcode",
+    ]),
+  )
+
+  const primeiraLinha = [logradouro, numero ? `nº ${numero}` : null]
+    .filter(Boolean)
+    .join(", ")
+
+  const cidadeEstado = [cidade, estado].filter(Boolean).join(" - ")
+
+  const partes = [
+    primeiraLinha,
+    complemento,
+    bairro,
+    cidadeEstado,
+    cep ? `CEP ${cep}` : null,
+  ].filter(Boolean)
+
+  return partes.length > 0 ? partes.join(" · ") : null
+}
+
 function resolveStatus(
   assinatura: AssinaturaRow | null,
   dataAtivacao: string | null,
 ): {
-  assinaturaTipo: AssinaturaTipo
   statusCode: StatusCode
   statusLabel: string
   precisaAtencao: boolean
@@ -219,7 +364,6 @@ function resolveStatus(
   if (isAssinante) {
     if (rawStatus === "canceled") {
       return {
-        assinaturaTipo: "Assinante",
         statusCode: "assinante_encerrado",
         statusLabel: "Encerrado",
         precisaAtencao: false,
@@ -233,7 +377,6 @@ function resolveStatus(
       rawStatus === "awaiting_payment"
     ) {
       return {
-        assinaturaTipo: "Assinante",
         statusCode: "assinante_bloqueado",
         statusLabel: "Bloqueado",
         precisaAtencao: true,
@@ -241,7 +384,6 @@ function resolveStatus(
     }
 
     return {
-      assinaturaTipo: "Assinante",
       statusCode: "assinante_ativo",
       statusLabel: "Ativo",
       precisaAtencao: false,
@@ -250,7 +392,6 @@ function resolveStatus(
 
   if (rawStatus === "canceled" || rawStatus === "blocked") {
     return {
-      assinaturaTipo: "Trial",
       statusCode: "trial_encerrado",
       statusLabel: "Trial encerrado",
       precisaAtencao: true,
@@ -264,7 +405,6 @@ function resolveStatus(
   if (trialEnd) {
     if (now <= trialEnd) {
       return {
-        assinaturaTipo: "Trial",
         statusCode: "trial_ativo",
         statusLabel: "Trial ativo",
         precisaAtencao: false,
@@ -275,7 +415,6 @@ function resolveStatus(
 
     if (now <= totalEnd) {
       return {
-        assinaturaTipo: "Trial",
         statusCode: "trial_congelado",
         statusLabel: "Trial congelado",
         precisaAtencao: true,
@@ -283,7 +422,6 @@ function resolveStatus(
     }
 
     return {
-      assinaturaTipo: "Trial",
       statusCode: "trial_encerrado",
       statusLabel: "Trial encerrado",
       precisaAtencao: true,
@@ -292,7 +430,6 @@ function resolveStatus(
 
   if (rawStatus === "trialing") {
     return {
-      assinaturaTipo: "Trial",
       statusCode: "trial_ativo",
       statusLabel: "Trial ativo",
       precisaAtencao: false,
@@ -301,7 +438,6 @@ function resolveStatus(
 
   if (rawStatus === "awaiting_payment") {
     return {
-      assinaturaTipo: "Trial",
       statusCode: "trial_congelado",
       statusLabel: "Trial congelado",
       precisaAtencao: true,
@@ -309,40 +445,59 @@ function resolveStatus(
   }
 
   return {
-    assinaturaTipo: "Trial",
     statusCode: "trial_encerrado",
     statusLabel: "Trial encerrado",
     precisaAtencao: true,
   }
 }
 
-function getSummary(items: AssinaturaItem[]) {
-  return items.reduce(
-    (summary, item) => {
-      summary.total += 1
+function getDataAtivacao(
+  assinatura: AssinaturaRow | null,
+  firstPaidCharge: CobrancaRow | null,
+) {
+  if (assinatura?.trial_converted_at) return assinatura.trial_converted_at
+  if (firstPaidCharge?.pago_em) return firstPaidCharge.pago_em
 
-      if (item.status_code === "trial_ativo") summary.trialAtivo += 1
-      if (item.status_code === "trial_congelado") summary.trialCongelado += 1
-      if (item.status_code === "trial_encerrado") summary.trialEncerrado += 1
-      if (item.status_code === "assinante_ativo") summary.assinanteAtivo += 1
-      if (item.status_code === "assinante_bloqueado") summary.assinanteBloqueado += 1
-      if (item.status_code === "assinante_encerrado") summary.assinanteEncerrado += 1
+  const rawStatus = normalizeStatus(assinatura?.status)
 
-      if (item.precisa_atencao) summary.atencao += 1
+  if (rawStatus === "active") {
+    return assinatura?.updated_at || assinatura?.created_at || null
+  }
 
-      return summary
-    },
-    {
-      total: 0,
-      trialAtivo: 0,
-      trialCongelado: 0,
-      trialEncerrado: 0,
-      assinanteAtivo: 0,
-      assinanteBloqueado: 0,
-      assinanteEncerrado: 0,
-      atencao: 0,
-    },
-  )
+  return null
+}
+
+function getPlanoLabel(assinatura: AssinaturaRow | null, dataAtivacao: string | null) {
+  if (!dataAtivacao) return "Trial"
+
+  const plano = String(assinatura?.plano ?? "").trim()
+
+  if (!plano) return "Plano Lucro Real"
+
+  if (normalizeText(plano) === "lucro_real") return "Plano Lucro Real"
+
+  return plano
+}
+
+function getPlanoTipo(dataAtivacao: string | null): PlanoTipo {
+  return dataAtivacao ? "Plano" : "Trial"
+}
+
+function getDataReferencia(
+  dataCadastro: string | null,
+  dataAtivacao: string | null,
+) {
+  if (dataAtivacao) {
+    return {
+      data: dataAtivacao,
+      label: "Ativação" as const,
+    }
+  }
+
+  return {
+    data: dataCadastro,
+    label: "Cadastro" as const,
+  }
 }
 
 function matchesSearch(item: AssinaturaItem, search: string) {
@@ -354,10 +509,11 @@ function matchesSearch(item: AssinaturaItem, search: string) {
       item.responsavel,
       item.email,
       item.whatsapp,
-      item.assinatura_tipo,
+      item.endereco_cobranca,
+      item.plano_label,
       item.status_label,
-      item.plano,
       item.cobranca_label,
+      item.cobranca_emissao_label,
       item.cobranca_bling_id,
       item.cobranca_documento,
     ].join(" "),
@@ -366,11 +522,65 @@ function matchesSearch(item: AssinaturaItem, search: string) {
   return content.includes(search)
 }
 
+function matchesPlano(item: AssinaturaItem, plano: string) {
+  if (!plano || plano === "todos") return true
+  if (plano === "trial") return item.plano_tipo === "Trial"
+
+  const readablePlano = plano.replace(/_/g, " ")
+
+  return normalizeText(item.plano_label).includes(readablePlano)
+}
+
 function matchesStatus(item: AssinaturaItem, status: string) {
   if (!status || status === "todos") return true
   if (status === "atencao") return item.precisa_atencao
 
   return item.status_code === status
+}
+
+function matchesDate(item: AssinaturaItem, dateFrom: string | null, dateTo: string | null) {
+  if (!dateFrom && !dateTo) return true
+
+  const referenceDate = toDateOnly(item.data_referencia)
+
+  if (!referenceDate) return false
+
+  if (dateFrom && referenceDate < dateFrom) return false
+  if (dateTo && referenceDate > dateTo) return false
+
+  return true
+}
+
+function getSummary(items: AssinaturaItem[]) {
+  return items.reduce(
+    (summary, item) => {
+      summary.total += 1
+
+      if (item.plano_tipo === "Trial") summary.trial += 1
+      if (item.plano_tipo === "Plano") summary.planos += 1
+      if (item.status_code === "trial_ativo") summary.trialAtivo += 1
+      if (item.status_code === "trial_congelado") summary.trialCongelado += 1
+      if (item.status_code === "trial_encerrado") summary.trialEncerrado += 1
+      if (item.status_code === "assinante_ativo") summary.ativos += 1
+      if (item.status_code === "assinante_bloqueado") summary.bloqueados += 1
+      if (item.status_code === "assinante_encerrado") summary.encerrados += 1
+      if (item.precisa_atencao) summary.atencao += 1
+
+      return summary
+    },
+    {
+      total: 0,
+      trial: 0,
+      planos: 0,
+      trialAtivo: 0,
+      trialCongelado: 0,
+      trialEncerrado: 0,
+      ativos: 0,
+      bloqueados: 0,
+      encerrados: 0,
+      atencao: 0,
+    },
+  )
 }
 
 export async function GET(request: NextRequest) {
@@ -382,13 +592,16 @@ export async function GET(request: NextRequest) {
     }
 
     const search = normalizeText(request.nextUrl.searchParams.get("search"))
+    const plano = normalizeText(request.nextUrl.searchParams.get("plano") || "todos")
     const status = normalizeStatus(
       request.nextUrl.searchParams.get("status") || "todos",
     )
+    const dateFrom = toDateInput(request.nextUrl.searchParams.get("dateFrom"))
+    const dateTo = toDateInput(request.nextUrl.searchParams.get("dateTo"))
 
     const { data: businesses, error: businessesError } = await supabaseAdmin
       .from("ci_business")
-      .select("id, name, nome_responsavel, email_financeiro, whatsapp, created_at")
+      .select("*")
       .order("created_at", { ascending: false })
       .limit(1000)
 
@@ -442,28 +655,31 @@ export async function GET(request: NextRequest) {
       const latestCharge = latestChargeMap.get(business.id) ?? null
       const firstPaidCharge = firstPaidChargeMap.get(business.id) ?? null
 
-      const dataAtivacao =
-        assinatura?.trial_converted_at ||
-        firstPaidCharge?.pago_em ||
-        null
-
+      const dataAtivacao = getDataAtivacao(assinatura, firstPaidCharge)
       const resolved = resolveStatus(assinatura, dataAtivacao)
+      const reference = getDataReferencia(business.created_at, dataAtivacao)
+      const cobrancaEmitida = Boolean(latestCharge?.id)
 
       return {
         id: assinatura?.id || business.id,
         business_id: business.id,
-        data_cadastro: business.created_at,
         cliente: business.name || "Cliente sem nome",
         responsavel: business.nome_responsavel,
         email: business.email_financeiro,
         whatsapp: business.whatsapp,
-        assinatura_tipo: resolved.assinaturaTipo,
+        endereco_cobranca: getBillingAddress(business),
+        plano_tipo: getPlanoTipo(dataAtivacao),
+        plano_label: getPlanoLabel(assinatura, dataAtivacao),
+        plano_valor: dataAtivacao
+          ? assinatura?.valor ?? latestCharge?.valor ?? null
+          : null,
+        data_cadastro: business.created_at,
         data_ativacao: dataAtivacao,
+        data_referencia: reference.data,
+        data_referencia_label: reference.label,
         status_code: resolved.statusCode,
         status_label: resolved.statusLabel,
         status_raw: assinatura?.status ?? null,
-        plano: assinatura?.plano ?? "Plano Lucro Real",
-        valor: assinatura?.valor ?? null,
         trial_started_at: assinatura?.trial_started_at ?? null,
         trial_ends_at: assinatura?.trial_ends_at ?? null,
         tolerancia_dias: Number(assinatura?.tolerancia_dias ?? 3),
@@ -471,18 +687,27 @@ export async function GET(request: NextRequest) {
         cobranca_id: latestCharge?.id ?? null,
         cobranca_status: latestCharge?.status ?? null,
         cobranca_label: getChargeStatusLabel(latestCharge?.status ?? null),
+        cobranca_emitida: cobrancaEmitida,
+        cobranca_emissao_label: cobrancaEmitida
+          ? "Emitida"
+          : "Pendente de Emissão",
         cobranca_valor: latestCharge?.valor ?? null,
-        cobranca_vencimento: latestCharge?.vencimento ?? null,
+        cobranca_vencimento:
+          assinatura?.proximo_vencimento ||
+          latestCharge?.vencimento ||
+          null,
         cobranca_link: latestCharge?.bling_link_pagamento ?? null,
         cobranca_bling_id: latestCharge?.bling_cobranca_id ?? null,
         cobranca_documento: latestCharge?.bling_numero_documento ?? null,
-        precisa_atencao: resolved.precisaAtencao,
+        precisa_atencao: resolved.precisaAtencao || !cobrancaEmitida,
       }
     })
 
     const filteredItems = items
       .filter((item) => matchesSearch(item, search))
+      .filter((item) => matchesPlano(item, plano))
       .filter((item) => matchesStatus(item, status))
+      .filter((item) => matchesDate(item, dateFrom, dateTo))
 
     return NextResponse.json({
       ok: true,

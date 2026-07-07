@@ -2,6 +2,7 @@
 
 "use client"
 
+import { Mail, MessageCircle } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import PageContainer from "@/components/layout/PageContainer"
@@ -27,6 +28,19 @@ type PeriodoFiltro =
   | "mes"
   | "personalizado"
 
+type Summary = {
+  total: number
+  trial: number
+  planos: number
+  trialAtivo: number
+  trialCongelado: number
+  trialEncerrado: number
+  ativos: number
+  bloqueados: number
+  encerrados: number
+  atencao: number
+}
+
 type AssinaturaItem = {
   id: string
   business_id: string
@@ -34,6 +48,7 @@ type AssinaturaItem = {
   responsavel: string | null
   email: string | null
   whatsapp: string | null
+  endereco_cobranca: string | null
   plano_tipo: "Trial" | "Plano"
   plano_label: string
   plano_valor: number | null
@@ -57,6 +72,8 @@ type AssinaturaItem = {
   cobranca_id: string | null
   cobranca_status: string | null
   cobranca_label: string
+  cobranca_emitida: boolean
+  cobranca_emissao_label: "Emitida" | "Pendente de Emissão"
   cobranca_valor: number | null
   cobranca_vencimento: string | null
   cobranca_link: string | null
@@ -68,22 +85,11 @@ type AssinaturaItem = {
 type ApiResponse = {
   ok: boolean
   message?: string
-  summary?: {
-    total: number
-    trial: number
-    planos: number
-    trialAtivo: number
-    trialCongelado: number
-    trialEncerrado: number
-    ativos: number
-    bloqueados: number
-    encerrados: number
-    atencao: number
-  }
+  summary?: Partial<Summary>
   data?: AssinaturaItem[]
 }
 
-const emptySummary = {
+const emptySummary: Summary = {
   total: 0,
   trial: 0,
   planos: 0,
@@ -110,6 +116,27 @@ const allStatusOptions: Array<{
   { value: "assinante_bloqueado", label: "Bloqueado", plano: "plano" },
   { value: "assinante_encerrado", label: "Encerrado", plano: "plano" },
 ]
+
+function numberOrZero(value: unknown) {
+  const number = Number(value)
+
+  return Number.isFinite(number) ? number : 0
+}
+
+function normalizeSummary(summary?: Partial<Summary>): Summary {
+  return {
+    total: numberOrZero(summary?.total),
+    trial: numberOrZero(summary?.trial),
+    planos: numberOrZero(summary?.planos),
+    trialAtivo: numberOrZero(summary?.trialAtivo),
+    trialCongelado: numberOrZero(summary?.trialCongelado),
+    trialEncerrado: numberOrZero(summary?.trialEncerrado),
+    ativos: numberOrZero(summary?.ativos),
+    bloqueados: numberOrZero(summary?.bloqueados),
+    encerrados: numberOrZero(summary?.encerrados),
+    atencao: numberOrZero(summary?.atencao),
+  }
+}
 
 function formatarDataInputLocal(data: Date) {
   const ano = data.getFullYear()
@@ -221,7 +248,31 @@ function buildWhatsAppLink(whatsapp: string | null) {
   return `https://wa.me/${normalized}`
 }
 
-function getPlanoClass(tipo: AssinaturaItem["plano_tipo"]) {
+function buildMailLink(email: string | null) {
+  if (!email) return null
+
+  const cleanEmail = email.trim()
+
+  if (!cleanEmail) return null
+
+  return `mailto:${cleanEmail}`
+}
+
+function getSafePlanoTipo(item: AssinaturaItem) {
+  if (item.plano_tipo === "Plano" || item.data_ativacao) return "Plano"
+
+  return "Trial"
+}
+
+function getSafePlanoLabel(item: AssinaturaItem) {
+  const tipo = getSafePlanoTipo(item)
+
+  if (tipo === "Trial") return "Trial"
+
+  return item.plano_label || "Plano Lucro Real"
+}
+
+function getPlanoClass(tipo: "Trial" | "Plano") {
   if (tipo === "Plano") {
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
   }
@@ -249,26 +300,12 @@ function getStatusClass(status: AssinaturaItem["status_code"]) {
   return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
 }
 
-function getCobrancaClass(status: string | null) {
-  const value = String(status ?? "").toLowerCase()
-
-  if (value === "paid") {
+function getCobrancaEmissaoClass(emitida: boolean) {
+  if (emitida) {
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
   }
 
-  if (value === "pending") {
-    return "border-amber-200 bg-amber-50 text-amber-900"
-  }
-
-  if (value === "overdue" || value === "error") {
-    return "border-rose-200 bg-rose-50 text-rose-700"
-  }
-
-  if (value === "canceled") {
-    return "border-neutral-200 bg-neutral-50 text-neutral-700"
-  }
-
-  return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
+  return "border-amber-200 bg-amber-50 text-amber-900"
 }
 
 function statusBelongsToPlano(status: StatusFilter, plano: PlanoFilter) {
@@ -361,7 +398,7 @@ function OverviewCard({
         </p>
 
         <p className={["text-3xl font-bold leading-none", valueClass].join(" ")}>
-          {value}
+          {numberOrZero(value)}
         </p>
       </button>
 
@@ -380,7 +417,9 @@ function OverviewCard({
             ].join(" ")}
           >
             <span>{row.label}</span>
-            <span className="font-bold text-black">{row.value}</span>
+            <span className="font-bold text-black">
+              {numberOrZero(row.value)}
+            </span>
           </button>
         ))}
       </div>
@@ -390,7 +429,7 @@ function OverviewCard({
 
 export default function TorreAssinaturasPage() {
   const [items, setItems] = useState<AssinaturaItem[]>([])
-  const [summary, setSummary] = useState(emptySummary)
+  const [summary, setSummary] = useState<Summary>(emptySummary)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -418,13 +457,13 @@ export default function TorreAssinaturasPage() {
 
   const acaoTrial = useMemo(() => {
     return items.filter(
-      (item) => item.plano_tipo === "Trial" && item.precisa_atencao,
+      (item) => getSafePlanoTipo(item) === "Trial" && item.precisa_atencao,
     ).length
   }, [items])
 
   const acaoPlanos = useMemo(() => {
     return items.filter(
-      (item) => item.plano_tipo === "Plano" && item.precisa_atencao,
+      (item) => getSafePlanoTipo(item) === "Plano" && item.precisa_atencao,
     ).length
   }, [items])
 
@@ -497,7 +536,7 @@ export default function TorreAssinaturasPage() {
       }
 
       setItems(payload.data ?? [])
-      setSummary(payload.summary ?? emptySummary)
+      setSummary(normalizeSummary(payload.summary))
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -1108,9 +1147,10 @@ export default function TorreAssinaturasPage() {
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.25fr_0.95fr_0.85fr_0.95fr_0.75fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="hidden grid-cols-[1.2fr_0.9fr_1.2fr_0.75fr_0.85fr_0.45fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
               <span>Cliente</span>
               <span>Plano</span>
+              <span>Endereço</span>
               <span>Status</span>
               <span>Cobrança</span>
               <span className="text-right">Ação</span>
@@ -1119,12 +1159,15 @@ export default function TorreAssinaturasPage() {
             <div className="divide-y divide-[#dfe7f7]">
               {items.map((item) => {
                 const whatsappLink = buildWhatsAppLink(item.whatsapp)
+                const emailLink = buildMailLink(item.email)
+                const planoTipo = getSafePlanoTipo(item)
+                const planoLabel = getSafePlanoLabel(item)
                 const planoValue = formatMoney(item.plano_valor)
 
                 return (
                   <div
                     key={item.id}
-                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.25fr_0.95fr_0.85fr_0.95fr_0.75fr] xl:items-start"
+                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.2fr_0.9fr_1.2fr_0.75fr_0.85fr_0.45fr] xl:items-start"
                   >
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
@@ -1156,15 +1199,13 @@ export default function TorreAssinaturasPage() {
                       <span
                         className={[
                           "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          getPlanoClass(item.plano_tipo),
+                          getPlanoClass(planoTipo),
                         ].join(" ")}
                       >
-                        {item.plano_tipo === "Trial"
-                          ? "Trial"
-                          : item.plano_label}
+                        {planoLabel}
                       </span>
 
-                      {item.plano_tipo === "Plano" && planoValue ? (
+                      {planoTipo === "Plano" && planoValue ? (
                         <p className="mt-2 text-xs text-neutral-500">
                           {planoValue}
                         </p>
@@ -1173,6 +1214,16 @@ export default function TorreAssinaturasPage() {
                       <p className="mt-2 text-xs text-neutral-500">
                         {item.data_referencia_label}:{" "}
                         {formatDate(item.data_referencia)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Endereço
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-neutral-600">
+                        {item.endereco_cobranca || "Endereço não informado"}
                       </p>
                     </div>
 
@@ -1199,10 +1250,10 @@ export default function TorreAssinaturasPage() {
                       <span
                         className={[
                           "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          getCobrancaClass(item.cobranca_status),
+                          getCobrancaEmissaoClass(item.cobranca_emitida),
                         ].join(" ")}
                       >
-                        {item.cobranca_label}
+                        {item.cobranca_emissao_label}
                       </span>
 
                       <p className="mt-2 text-xs text-neutral-500">
@@ -1219,35 +1270,44 @@ export default function TorreAssinaturasPage() {
                         Ação
                       </p>
 
-                      <div className="mt-2 flex flex-col gap-2">
-                        <a
-                          href="/cobrancas"
-                          className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
-                        >
-                          Ver cobranças
-                        </a>
-
-                        {item.cobranca_link ? (
-                          <a
-                            href={item.cobranca_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
-                          >
-                            Abrir cobrança
-                          </a>
-                        ) : null}
-
+                      <div className="mt-2 flex justify-start gap-2 xl:justify-end">
                         {whatsappLink ? (
                           <a
                             href={whatsappLink}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex w-full items-center justify-center rounded-2xl bg-[#002198] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#00166f] xl:w-auto"
+                            title="Abrir WhatsApp"
+                            aria-label="Abrir WhatsApp"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
                           >
-                            WhatsApp
+                            <MessageCircle className="h-4 w-4" />
                           </a>
-                        ) : null}
+                        ) : (
+                          <span
+                            title="WhatsApp não informado"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </span>
+                        )}
+
+                        {emailLink ? (
+                          <a
+                            href={emailLink}
+                            title="Enviar e-mail"
+                            aria-label="Enviar e-mail"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
+                          >
+                            <Mail className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <span
+                            title="E-mail não informado"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                          >
+                            <Mail className="h-4 w-4" />
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
