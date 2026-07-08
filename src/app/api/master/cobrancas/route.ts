@@ -5,94 +5,35 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireMasterApiUser } from "@/lib/auth/require-master-api"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
-type StatusFilter =
-  | "todos"
-  | "pending"
-  | "overdue"
-  | "paid"
-  | "error"
-  | "canceled"
-  | "needs_action"
-
-type TipoFilter = "todos" | "ativacao" | "renovacao"
-
-type TipoCode = "ativacao" | "renovacao" | "outro"
-
 type CobrancaRow = {
   id: string
   business_id: string
-  assinatura_id: string | null
-  valor: number | null
-  vencimento: string | null
-  status: string | null
-  sync_status: string | null
-  sync_error: string | null
-  ciclo_tipo: string | null
-  competencia: string | null
-  gerada_em: string | null
-  created_at: string | null
-  pago_em: string | null
-  bling_cobranca_id: string | null
-  bling_numero_documento: string | null
-  bling_link_pagamento: string | null
-  bling_status_raw: string | null
-  ultima_consulta_bling_em: string | null
-  metadata: Record<string, unknown> | null
+  assinatura_id?: string | null
+  competencia?: string | null
+  ciclo_tipo?: string | null
+  valor?: number | string | null
+  gerada_em?: string | null
+  created_at?: string | null
+  vencimento?: string | null
+  status?: string | null
+  sync_status?: string | null
+  sync_error?: string | null
+  bling_cobranca_id?: string | null
+  bling_numero_documento?: string | null
+  bling_link_pagamento?: string | null
+  pago_em?: string | null
+  ultima_consulta_bling_em?: string | null
+  [key: string]: unknown
 }
 
 type BusinessRow = {
   id: string
-  name: string | null
-  nome_responsavel: string | null
-  email_financeiro: string | null
-  whatsapp: string | null
-  created_at: string | null
-}
-
-type AssinaturaRow = {
-  id: string
-  business_id: string
-  status: string | null
-  plano: string | null
-  valor: number | null
-  trial_started_at: string | null
-  trial_ends_at: string | null
-  proximo_vencimento: string | null
-  payment_method: string | null
-  created_at: string | null
-}
-
-type CobrancaResponseItem = {
-  id: string
-  business_id: string
-  assinatura_id: string | null
-  cliente: string
-  responsavel: string | null
-  email_financeiro: string | null
-  whatsapp: string | null
-  assinatura_status: string | null
-  plano: string | null
-  forma_pagamento: string | null
-  proximo_vencimento: string | null
-  valor: number | null
-  vencimento: string | null
-  status: string | null
-  sync_status: string | null
-  sync_error: string | null
-  ciclo_tipo: string | null
-  tipo_code: TipoCode
-  tipo_label: string
-  competencia: string | null
-  gerada_em: string | null
-  created_at: string | null
-  data_criacao: string | null
-  pago_em: string | null
-  bling_cobranca_id: string | null
-  bling_numero_documento: string | null
-  bling_link_pagamento: string | null
-  bling_status_raw: string | null
-  ultima_consulta_bling_em: string | null
-  needs_action: boolean
+  name?: string | null
+  nome_responsavel?: string | null
+  email_financeiro?: string | null
+  whatsapp?: string | null
+  created_at?: string | null
+  [key: string]: unknown
 }
 
 function normalizeText(value: unknown) {
@@ -103,38 +44,129 @@ function normalizeText(value: unknown) {
     .replace(/[\u0300-\u036f]/g, "")
 }
 
-function normalizeStatus(value: unknown) {
-  const status = normalizeText(value)
+function getStringValue(value: unknown) {
+  if (value === null || value === undefined) return null
 
-  if (status === "cancelled") return "canceled"
+  const text = String(value).trim()
 
-  return status
+  return text || null
 }
 
-function toDateInput(value: string | null) {
-  const clean = String(value ?? "").trim()
+function pickFirstString(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = getStringValue(row[key])
 
-  if (!clean) return null
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return null
+    if (value) return value
+  }
 
-  return clean
+  return null
 }
 
-function toDateOnly(value: string | null) {
+function formatCpfCnpj(value: string | null) {
   if (!value) return null
 
-  return String(value).substring(0, 10)
+  const digits = value.replace(/\D/g, "")
+
+  if (digits.length === 11) {
+    return `${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}`
+  }
+
+  if (digits.length === 14) {
+    return `${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8, 12)}-${digits.substring(12)}`
+  }
+
+  return value
 }
 
-function getTimestamp(value: string | null) {
-  if (!value) return 0
+function getDocumentoCliente(business: BusinessRow | undefined) {
+  if (!business) return null
 
-  const date = new Date(value)
+  const rawDocument = pickFirstString(business, [
+    "cnpj",
+    "cpf",
+    "cpf_cnpj",
+    "documento",
+    "document",
+    "tax_id",
+    "taxId",
+    "billing_documento",
+    "billing_cpf_cnpj",
+    "billing_cnpj",
+    "billing_cpf",
+    "documento_fiscal",
+    "documento_cliente",
+  ])
 
-  return Number.isFinite(date.getTime()) ? date.getTime() : 0
+  return formatCpfCnpj(rawDocument)
 }
 
-function isPastDate(value: string | null) {
+function getRazaoSocial(business: BusinessRow | undefined) {
+  if (!business) return null
+
+  return (
+    pickFirstString(business, [
+      "razao_social",
+      "razaoSocial",
+      "legal_name",
+      "legalName",
+      "nome_empresa",
+      "company_name",
+      "name",
+    ]) ||
+    business.name ||
+    null
+  )
+}
+
+function getNomeCliente(business: BusinessRow | undefined) {
+  if (!business) return null
+
+  return (
+    pickFirstString(business, [
+      "nome_fantasia",
+      "nomeFantasia",
+      "fantasy_name",
+      "trade_name",
+      "nome",
+      "nome_responsavel",
+    ]) ||
+    business.nome_responsavel ||
+    business.name ||
+    null
+  )
+}
+
+function getTipoLabel(cicloTipo: string | null | undefined) {
+  const normalized = normalizeText(cicloTipo)
+
+  if (
+    normalized.includes("first") ||
+    normalized.includes("ativacao") ||
+    normalized.includes("activation") ||
+    normalized === "first_charge"
+  ) {
+    return "Ativação"
+  }
+
+  if (
+    normalized.includes("recurring") ||
+    normalized.includes("recurr") ||
+    normalized.includes("recorr") ||
+    normalized.includes("renov") ||
+    normalized.includes("renew") ||
+    normalized === "recurring_charge"
+  ) {
+    return "Recorrência"
+  }
+
+  if (normalized.includes("cancel")) {
+    return "Cancelamento"
+  }
+
+  return cicloTipo || "—"
+}
+
+function isPastDate(value: string | null | undefined) {
   if (!value) return false
 
   const today = new Date()
@@ -146,253 +178,76 @@ function isPastDate(value: string | null) {
   return Number.isFinite(date.getTime()) && date < today
 }
 
-function getChargeCreatedAt(cobranca: CobrancaRow) {
-  return cobranca.gerada_em || cobranca.created_at || null
-}
+function getStatusLabel(cobranca: CobrancaRow) {
+  const status = normalizeText(cobranca.status)
+  const syncStatus = normalizeText(cobranca.sync_status)
 
-function getMetadataText(metadata: Record<string, unknown> | null) {
-  if (!metadata) return ""
+  if (status === "error" || syncStatus === "error") return "Com erro"
 
-  return normalizeText(JSON.stringify(metadata))
-}
-
-function getTipoCode(
-  cicloTipo: string | null,
-  metadata: Record<string, unknown> | null,
-): TipoCode {
-  const normalized = normalizeText(cicloTipo)
-  const metadataText = getMetadataText(metadata)
-  const text = `${normalized} ${metadataText}`
-
-  if (
-    text.includes("first_charge") ||
-    text.includes("first") ||
-    text.includes("ativacao") ||
-    text.includes("ativação") ||
-    text.includes("ativ")
-  ) {
-    return "ativacao"
+  if (status === "paid" || status === "paga" || status === "pago") {
+    return "Pago"
   }
 
   if (
-    text.includes("recurring") ||
-    text.includes("recurrence") ||
-    text.includes("mensalidade") ||
-    text.includes("renovacao") ||
-    text.includes("renovação") ||
-    text.includes("renov") ||
-    text.includes("recorr")
+    status === "canceled" ||
+    status === "cancelada" ||
+    status === "cancelado" ||
+    status === "cancelled"
   ) {
-    return "renovacao"
+    return "Cancelado"
   }
 
-  return "outro"
-}
-
-function getTipoLabel(tipo: TipoCode, originalValue: string | null) {
-  if (tipo === "ativacao") return "Ativação"
-  if (tipo === "renovacao") return "Renovação"
-
-  return originalValue || "Não informado"
-}
-
-function isNeedsAction(cobranca: CobrancaRow) {
-  const status = normalizeStatus(cobranca.status)
-  const syncStatus = normalizeStatus(cobranca.sync_status)
-
-  if (status === "error") return true
-  if (syncStatus === "error") return true
-
   if (
-    (status === "pending" || status === "overdue") &&
+    status === "overdue" ||
+    status === "vencida" ||
+    status === "vencido" ||
     isPastDate(cobranca.vencimento)
   ) {
-    return true
+    return "Vencido"
   }
 
-  return false
+  return "Aberto"
 }
 
-function getStatusFilter(request: NextRequest): StatusFilter {
-  const value = normalizeStatus(request.nextUrl.searchParams.get("status"))
+function getStatusCode(cobranca: CobrancaRow) {
+  const label = getStatusLabel(cobranca)
 
-  if (
-    value === "pending" ||
-    value === "overdue" ||
-    value === "paid" ||
-    value === "error" ||
-    value === "canceled" ||
-    value === "needs_action"
-  ) {
-    return value
+  if (label === "Pago") return "pago"
+  if (label === "Vencido") return "vencido"
+  if (label === "Cancelado") return "cancelado"
+  if (label === "Com erro") return "erro"
+
+  return "aberto"
+}
+
+function getEmissaoLabel(cobranca: CobrancaRow) {
+  const status = normalizeText(cobranca.status)
+  const syncStatus = normalizeText(cobranca.sync_status)
+
+  if (status === "error" || syncStatus === "error") {
+    return "Com erro"
   }
 
-  return "todos"
-}
-
-function getTipoFilter(request: NextRequest): TipoFilter {
-  const value = normalizeText(request.nextUrl.searchParams.get("tipo"))
-
-  if (value === "ativacao" || value === "renovacao") {
-    return value
+  if (cobranca.bling_cobranca_id) {
+    return "Emitida"
   }
 
-  return "todos"
+  return "Pendente de emissão"
 }
 
-function getLimit(request: NextRequest) {
-  const raw = Number(request.nextUrl.searchParams.get("limit") ?? 1000)
+function getEmissaoCode(cobranca: CobrancaRow) {
+  const label = getEmissaoLabel(cobranca)
 
-  if (!Number.isFinite(raw) || raw <= 0) return 1000
+  if (label === "Emitida") return "emitida"
+  if (label === "Com erro") return "erro"
 
-  return Math.min(2000, Math.floor(raw))
+  return "pendente_emissao"
 }
 
-function matchesStatusFilter(item: CobrancaResponseItem, status: StatusFilter) {
-  const normalized = normalizeStatus(item.status)
+function getValor(value: unknown) {
+  const numberValue = Number(value ?? 0)
 
-  if (status === "todos") return true
-  if (status === "needs_action") return item.needs_action
-  if (status === "pending") return normalized === "pending" && !isPastDate(item.vencimento)
-  if (status === "overdue") {
-    return normalized === "overdue" || (normalized === "pending" && isPastDate(item.vencimento))
-  }
-
-  return normalized === status
-}
-
-function matchesTipoFilter(item: CobrancaResponseItem, tipo: TipoFilter) {
-  if (tipo === "todos") return true
-
-  return item.tipo_code === tipo
-}
-
-function matchesDateFilter(
-  item: CobrancaResponseItem,
-  dateFrom: string | null,
-  dateTo: string | null,
-) {
-  if (!dateFrom && !dateTo) return true
-
-  const dataCriacao = toDateOnly(item.data_criacao)
-
-  if (!dataCriacao) return false
-  if (dateFrom && dataCriacao < dateFrom) return false
-  if (dateTo && dataCriacao > dateTo) return false
-
-  return true
-}
-
-function matchesSearch(item: CobrancaResponseItem, search: string) {
-  if (!search) return true
-
-  const content = normalizeText(
-    [
-      item.cliente,
-      item.responsavel,
-      item.email_financeiro,
-      item.whatsapp,
-      item.assinatura_status,
-      item.plano,
-      item.forma_pagamento,
-      item.status,
-      item.sync_status,
-      item.sync_error,
-      item.ciclo_tipo,
-      item.tipo_label,
-      item.competencia,
-      item.bling_cobranca_id,
-      item.bling_numero_documento,
-      item.bling_status_raw,
-    ].join(" "),
-  )
-
-  return content.includes(search)
-}
-
-function getCurrentChargeByClient(rows: CobrancaResponseItem[]) {
-  const map = new Map<string, CobrancaResponseItem>()
-
-  rows.forEach((row) => {
-    const key = row.business_id
-
-    if (!key) return
-
-    const current = map.get(key)
-
-    if (!current) {
-      map.set(key, row)
-      return
-    }
-
-    const currentDate =
-      getTimestamp(current.data_criacao) ||
-      getTimestamp(current.created_at) ||
-      getTimestamp(current.vencimento)
-
-    const rowDate =
-      getTimestamp(row.data_criacao) ||
-      getTimestamp(row.created_at) ||
-      getTimestamp(row.vencimento)
-
-    if (rowDate > currentDate) {
-      map.set(key, row)
-    }
-  })
-
-  return Array.from(map.values())
-}
-
-function getSummary(rows: CobrancaResponseItem[]) {
-  return rows.reduce(
-    (summary, cobranca) => {
-      const status = normalizeStatus(cobranca.status)
-      const syncStatus = normalizeStatus(cobranca.sync_status)
-
-      summary.total += 1
-
-      if (cobranca.tipo_code === "ativacao") summary.ativacao += 1
-      if (cobranca.tipo_code === "renovacao") summary.renovacao += 1
-
-      if (status === "canceled") {
-        summary.canceled += 1
-        summary.cancelamento += 1
-      }
-
-      if (status === "pending" && !isPastDate(cobranca.vencimento)) {
-        summary.pending += 1
-      }
-
-      if (
-        status === "overdue" ||
-        (status === "pending" && isPastDate(cobranca.vencimento))
-      ) {
-        summary.overdue += 1
-      }
-
-      if (status === "paid") summary.paid += 1
-
-      if (status === "error" || syncStatus === "error") {
-        summary.error += 1
-      }
-
-      if (cobranca.needs_action) summary.needsAction += 1
-
-      return summary
-    },
-    {
-      total: 0,
-      ativacao: 0,
-      renovacao: 0,
-      cancelamento: 0,
-      pending: 0,
-      overdue: 0,
-      paid: 0,
-      error: 0,
-      canceled: 0,
-      needsAction: 0,
-    },
-  )
+  return Number.isFinite(numberValue) ? numberValue : 0
 }
 
 export async function GET(request: NextRequest) {
@@ -403,166 +258,154 @@ export async function GET(request: NextRequest) {
       return auth.response
     }
 
-    const statusFilter = getStatusFilter(request)
-    const tipoFilter = getTipoFilter(request)
-    const limit = getLimit(request)
-    const search = normalizeText(request.nextUrl.searchParams.get("search"))
-    const dateFrom = toDateInput(request.nextUrl.searchParams.get("dateFrom"))
-    const dateTo = toDateInput(request.nextUrl.searchParams.get("dateTo"))
+    const searchParams = request.nextUrl.searchParams
+    const statusFilter = searchParams.get("status") || "todos"
 
-    const { data: cobrancas, error: cobrancasError } = await supabaseAdmin
+    const { data: cobrancasData, error: cobrancasError } = await supabaseAdmin
       .from("ci_cobrancas")
-      .select(
-        `
-          id,
-          business_id,
-          assinatura_id,
-          valor,
-          vencimento,
-          status,
-          sync_status,
-          sync_error,
-          ciclo_tipo,
-          competencia,
-          gerada_em,
-          created_at,
-          pago_em,
-          bling_cobranca_id,
-          bling_numero_documento,
-          bling_link_pagamento,
-          bling_status_raw,
-          ultima_consulta_bling_em,
-          metadata
-        `,
-      )
+      .select("*")
       .order("created_at", { ascending: false })
-      .limit(limit)
 
     if (cobrancasError) {
       throw cobrancasError
     }
 
-    const cobrancasRows = (cobrancas ?? []) as CobrancaRow[]
-
+    const cobrancas = (cobrancasData ?? []) as CobrancaRow[]
     const businessIds = Array.from(
       new Set(
-        cobrancasRows
+        cobrancas
           .map((cobranca) => cobranca.business_id)
           .filter(Boolean),
       ),
     )
 
-    const assinaturaIds = Array.from(
-      new Set(
-        cobrancasRows
-          .map((cobranca) => cobranca.assinatura_id)
-          .filter(Boolean),
-      ),
-    ) as string[]
+    let businessMap = new Map<string, BusinessRow>()
 
-    const { data: businesses, error: businessesError } =
-      businessIds.length > 0
-        ? await supabaseAdmin
-            .from("ci_business")
-            .select(
-              "id, name, nome_responsavel, email_financeiro, whatsapp, created_at",
-            )
-            .in("id", businessIds)
-        : { data: [], error: null }
+    if (businessIds.length > 0) {
+      const { data: businessesData, error: businessesError } =
+        await supabaseAdmin
+          .from("ci_business")
+          .select("*")
+          .in("id", businessIds)
 
-    if (businessesError) {
-      throw businessesError
+      if (businessesError) {
+        throw businessesError
+      }
+
+      businessMap = new Map(
+        ((businessesData ?? []) as BusinessRow[]).map((business) => [
+          business.id,
+          business,
+        ]),
+      )
     }
 
-    const { data: assinaturas, error: assinaturasError } =
-      assinaturaIds.length > 0
-        ? await supabaseAdmin
-            .from("ci_assinaturas")
-            .select(
-              "id, business_id, status, plano, valor, trial_started_at, trial_ends_at, proximo_vencimento, payment_method, created_at",
-            )
-            .in("id", assinaturaIds)
-        : { data: [], error: null }
-
-    if (assinaturasError) {
-      throw assinaturasError
-    }
-
-    const businessMap = new Map<string, BusinessRow>()
-    const assinaturaMap = new Map<string, AssinaturaRow>()
-
-    ;((businesses ?? []) as BusinessRow[]).forEach((business) => {
-      businessMap.set(business.id, business)
-    })
-
-    ;((assinaturas ?? []) as AssinaturaRow[]).forEach((assinatura) => {
-      assinaturaMap.set(assinatura.id, assinatura)
-    })
-
-    const enrichedRows: CobrancaResponseItem[] = cobrancasRows.map((cobranca) => {
-      const business = businessMap.get(cobranca.business_id) ?? null
-      const assinatura = cobranca.assinatura_id
-        ? assinaturaMap.get(cobranca.assinatura_id) ?? null
-        : null
-      const tipoCode = getTipoCode(cobranca.ciclo_tipo, cobranca.metadata)
-      const dataCriacao = getChargeCreatedAt(cobranca)
+    const items = cobrancas.map((cobranca) => {
+      const business = businessMap.get(cobranca.business_id)
+      const statusCode = getStatusCode(cobranca)
+      const emissaoCode = getEmissaoCode(cobranca)
 
       return {
         id: cobranca.id,
         business_id: cobranca.business_id,
-        assinatura_id: cobranca.assinatura_id,
-        cliente: business?.name ?? "Cliente sem nome",
-        responsavel: business?.nome_responsavel ?? null,
-        email_financeiro: business?.email_financeiro ?? null,
-        whatsapp: business?.whatsapp ?? null,
-        assinatura_status: assinatura?.status ?? null,
-        plano: assinatura?.plano ?? null,
-        forma_pagamento: assinatura?.payment_method ?? null,
-        proximo_vencimento: assinatura?.proximo_vencimento ?? null,
-        valor: cobranca.valor,
-        vencimento: cobranca.vencimento,
-        status: cobranca.status,
-        sync_status: cobranca.sync_status,
-        sync_error: cobranca.sync_error,
-        ciclo_tipo: cobranca.ciclo_tipo,
-        tipo_code: tipoCode,
-        tipo_label: getTipoLabel(tipoCode, cobranca.ciclo_tipo),
-        competencia: cobranca.competencia,
-        gerada_em: cobranca.gerada_em,
-        created_at: cobranca.created_at,
-        data_criacao: dataCriacao,
-        pago_em: cobranca.pago_em,
-        bling_cobranca_id: cobranca.bling_cobranca_id,
-        bling_numero_documento: cobranca.bling_numero_documento,
-        bling_link_pagamento: cobranca.bling_link_pagamento,
-        bling_status_raw: cobranca.bling_status_raw,
-        ultima_consulta_bling_em: cobranca.ultima_consulta_bling_em,
-        needs_action: isNeedsAction(cobranca),
+        assinatura_id: cobranca.assinatura_id || null,
+
+        documento_cliente: getDocumentoCliente(business),
+        cpf_cnpj: getDocumentoCliente(business),
+        documento: getDocumentoCliente(business),
+
+        razao_social: getRazaoSocial(business),
+        nome_cliente: getNomeCliente(business),
+        cliente_nome: getRazaoSocial(business),
+        cliente: getRazaoSocial(business),
+        business_name: business?.name || null,
+        name: business?.name || null,
+        nome_responsavel: business?.nome_responsavel || null,
+        email_financeiro: business?.email_financeiro || null,
+        whatsapp: business?.whatsapp || null,
+
+        tipo: cobranca.ciclo_tipo || null,
+        tipo_label: getTipoLabel(cobranca.ciclo_tipo),
+        ciclo_tipo: cobranca.ciclo_tipo || null,
+
+        status: cobranca.status || null,
+        status_code: statusCode,
+        status_label: getStatusLabel(cobranca),
+        situacao: cobranca.status || null,
+        cobranca_status: cobranca.status || null,
+
+        emissao_status_code: emissaoCode,
+        emissao_status_label: getEmissaoLabel(cobranca),
+
+        sync_status: cobranca.sync_status || null,
+        sync_error: cobranca.sync_error || null,
+
+        valor: getValor(cobranca.valor),
+        cobranca_valor: getValor(cobranca.valor),
+
+        vencimento: cobranca.vencimento || null,
+        pago_em: cobranca.pago_em || null,
+        created_at: cobranca.created_at || cobranca.gerada_em || null,
+        gerada_em: cobranca.gerada_em || cobranca.created_at || null,
+        competencia: cobranca.competencia || null,
+
+        bling_cobranca_id: cobranca.bling_cobranca_id || null,
+        bling_numero_documento: cobranca.bling_numero_documento || null,
+        bling_documento: cobranca.bling_numero_documento || null,
+        bling_link_pagamento: cobranca.bling_link_pagamento || null,
+        ultima_consulta_bling_em:
+          cobranca.ultima_consulta_bling_em || null,
       }
     })
 
-    const currentRows = getCurrentChargeByClient(enrichedRows)
+    const filteredItems =
+      statusFilter === "todos"
+        ? items
+        : items.filter((item) => item.status_code === statusFilter)
 
-    const searchedRows = currentRows.filter((item) =>
-      matchesSearch(item, search),
-    )
+    const summary = filteredItems.reduce(
+      (acc, item) => {
+        acc.total += 1
 
-    const typedRows = searchedRows.filter((item) =>
-      matchesTipoFilter(item, tipoFilter),
-    )
+        if (item.tipo_label === "Ativação") acc.ativacao += 1
+        if (item.tipo_label === "Recorrência") acc.recorrencia += 1
+        if (item.tipo_label === "Cancelamento") acc.cancelamento += 1
 
-    const datedRows = typedRows.filter((item) =>
-      matchesDateFilter(item, dateFrom, dateTo),
-    )
+        if (item.status_code === "aberto") acc.aberto += 1
+        if (item.status_code === "pago") acc.pago += 1
+        if (item.status_code === "vencido") acc.vencido += 1
+        if (item.status_code === "erro") acc.comErro += 1
 
-    const filteredRows = datedRows.filter((item) =>
-      matchesStatusFilter(item, statusFilter),
+        if (
+          item.status_code === "vencido" ||
+          item.status_code === "erro" ||
+          item.emissao_status_code === "pendente_emissao"
+        ) {
+          acc.acaoManual += 1
+        }
+
+        return acc
+      },
+      {
+        total: 0,
+        ativacao: 0,
+        recorrencia: 0,
+        cancelamento: 0,
+        aberto: 0,
+        pago: 0,
+        vencido: 0,
+        comErro: 0,
+        acaoManual: 0,
+      },
     )
 
     return NextResponse.json({
       ok: true,
-      summary: getSummary(datedRows),
-      data: filteredRows,
+      success: true,
+      data: filteredItems,
+      cobrancas: filteredItems,
+      items: filteredItems,
+      summary,
     })
   } catch (error) {
     console.error("Erro ao carregar cobranças da Torre:", error)
@@ -570,7 +413,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: "Não foi possível carregar as cobranças da Torre.",
+        success: false,
+        message: "Não foi possível carregar as cobranças.",
       },
       { status: 500 },
     )

@@ -2,22 +2,22 @@
 
 "use client"
 
+import { ExternalLink, MessageCircle } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import PageContainer from "@/components/layout/PageContainer"
 import PageHeader from "@/components/layout/PageHeader"
 import { Card, Input } from "@/components/ui"
 
+type TipoFilter = "todos" | "ativacao" | "recorrencia" | "cancelamento"
+
 type StatusFilter =
   | "todos"
-  | "pending"
-  | "overdue"
-  | "paid"
-  | "error"
-  | "canceled"
-  | "needs_action"
-
-type TipoFilter = "todos" | "ativacao" | "renovacao"
+  | "aberto"
+  | "pago"
+  | "vencido"
+  | "cancelado"
+  | "erro"
 
 type PeriodoFiltro =
   | "todos"
@@ -26,97 +26,172 @@ type PeriodoFiltro =
   | "mes"
   | "personalizado"
 
-type CobrancaItem = {
-  id: string
-  business_id: string
-  assinatura_id: string | null
-  cliente: string
-  responsavel: string | null
-  email_financeiro: string | null
-  whatsapp: string | null
-  assinatura_status: string | null
-  plano: string | null
-  forma_pagamento: string | null
-  proximo_vencimento: string | null
-  valor: number | null
-  vencimento: string | null
-  status: string | null
-  sync_status: string | null
-  sync_error: string | null
-  ciclo_tipo: string | null
-  tipo_code: "ativacao" | "renovacao" | "outro"
-  tipo_label: string
-  competencia: string | null
-  gerada_em: string | null
-  created_at: string | null
-  data_criacao: string | null
-  pago_em: string | null
-  bling_cobranca_id: string | null
-  bling_numero_documento: string | null
-  bling_link_pagamento: string | null
-  bling_status_raw: string | null
-  ultima_consulta_bling_em: string | null
-  needs_action: boolean
+type ApiPayload = {
+  ok?: boolean
+  success?: boolean
+  message?: string
+  error?: string
+  data?: unknown
+  items?: unknown
+  cobrancas?: unknown
+}
+
+type CobrancaRow = {
+  id?: string | null
+  business_id?: string | null
+
+  documento_cliente?: string | null
+  cpf_cnpj?: string | null
+  documento?: string | null
+
+  razao_social?: string | null
+  nome_cliente?: string | null
+  cliente_nome?: string | null
+  cliente?: string | null
+  business_name?: string | null
+  name?: string | null
+  nome_responsavel?: string | null
+  email_financeiro?: string | null
+  whatsapp?: string | null
+
+  tipo?: string | null
+  tipo_label?: string | null
+  ciclo_tipo?: string | null
+
+  status?: string | null
+  status_code?: string | null
+  status_label?: string | null
+  situacao?: string | null
+  cobranca_status?: string | null
+
+  emissao_status_code?: string | null
+  emissao_status_label?: string | null
+
+  sync_status?: string | null
+  sync_error?: string | null
+
+  valor?: number | null
+  cobranca_valor?: number | null
+
+  vencimento?: string | null
+  pago_em?: string | null
+  created_at?: string | null
+  gerada_em?: string | null
+  competencia?: string | null
+
+  bling_cobranca_id?: string | null
+  bling_numero_documento?: string | null
+  bling_documento?: string | null
+  bling_link_pagamento?: string | null
+  ultima_consulta_bling_em?: string | null
 }
 
 type Summary = {
   total: number
   ativacao: number
-  renovacao: number
+  recorrencia: number
   cancelamento: number
-  pending: number
-  overdue: number
-  paid: number
-  error: number
-  canceled: number
-  needsAction: number
+  aberto: number
+  pago: number
+  vencido: number
+  comErro: number
+  acaoManual: number
 }
 
-type ApiResponse = {
-  ok: boolean
-  message?: string
-  summary?: Partial<Summary>
-  data?: CobrancaItem[]
+const tipoOptions: Array<{
+  value: TipoFilter
+  label: string
+}> = [
+  { value: "todos", label: "Todos" },
+  { value: "ativacao", label: "Ativação" },
+  { value: "recorrencia", label: "Recorrência" },
+  { value: "cancelamento", label: "Cancelamento" },
+]
+
+const statusOptions: Array<{
+  value: StatusFilter
+  label: string
+}> = [
+  { value: "todos", label: "Todos" },
+  { value: "aberto", label: "Aberto" },
+  { value: "pago", label: "Pago" },
+  { value: "vencido", label: "Vencido" },
+  { value: "cancelado", label: "Cancelado" },
+  { value: "erro", label: "Com erro" },
+]
+
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
 }
 
-type ProcessorResponse = {
-  success?: boolean
-  error?: string
-  payload?: unknown
-}
-
-const defaultSummary: Summary = {
-  total: 0,
-  ativacao: 0,
-  renovacao: 0,
-  cancelamento: 0,
-  pending: 0,
-  overdue: 0,
-  paid: 0,
-  error: 0,
-  canceled: 0,
-  needsAction: 0,
-}
-
-function numberOrZero(value: unknown) {
-  const number = Number(value)
-
-  return Number.isFinite(number) ? number : 0
-}
-
-function normalizeSummary(summary?: Partial<Summary>): Summary {
-  return {
-    total: numberOrZero(summary?.total),
-    ativacao: numberOrZero(summary?.ativacao),
-    renovacao: numberOrZero(summary?.renovacao),
-    cancelamento: numberOrZero(summary?.cancelamento),
-    pending: numberOrZero(summary?.pending),
-    overdue: numberOrZero(summary?.overdue),
-    paid: numberOrZero(summary?.paid),
-    error: numberOrZero(summary?.error),
-    canceled: numberOrZero(summary?.canceled),
-    needsAction: numberOrZero(summary?.needsAction),
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>
   }
+
+  return {}
+}
+
+function extractArray(payload: ApiPayload | null): CobrancaRow[] {
+  if (!payload) return []
+
+  if (Array.isArray(payload.data)) return payload.data as CobrancaRow[]
+  if (Array.isArray(payload.items)) return payload.items as CobrancaRow[]
+  if (Array.isArray(payload.cobrancas)) {
+    return payload.cobrancas as CobrancaRow[]
+  }
+
+  const data = asRecord(payload.data)
+
+  if (Array.isArray(data.items)) return data.items as CobrancaRow[]
+  if (Array.isArray(data.cobrancas)) return data.cobrancas as CobrancaRow[]
+  if (Array.isArray(data.data)) return data.data as CobrancaRow[]
+
+  return []
+}
+
+function getNumber(value: unknown) {
+  const numberValue = Number(value ?? 0)
+
+  return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+function getValor(row: CobrancaRow) {
+  return getNumber(row.valor ?? row.cobranca_valor)
+}
+
+function formatMoney(value: number | null | undefined) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(getNumber(value))
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "—"
+
+  const cleanValue = String(value).substring(0, 10)
+  const [year, month, day] = cleanValue.split("-")
+
+  if (!year || !month || !day) return "—"
+
+  return `${day}/${month}/${year}`
+}
+
+function isPastDate(value: string | null | undefined) {
+  if (!value) return false
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const date = new Date(`${String(value).substring(0, 10)}T00:00:00`)
+  date.setHours(0, 0, 0, 0)
+
+  return Number.isFinite(date.getTime()) && date < today
 }
 
 function formatarDataInputLocal(data: Date) {
@@ -172,33 +247,6 @@ function getDatasDoMesSelecionado(valorMes: string) {
   }
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "—"
-
-  const cleanValue = String(value).substring(0, 10)
-  const [year, month, day] = cleanValue.split("-")
-
-  if (!year || !month || !day) return "—"
-
-  return `${day}/${month}/${year}`
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "—"
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return "—"
-
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
 function formatarMesAnoBR(valorMes: string) {
   if (!valorMes) return "—"
 
@@ -222,236 +270,277 @@ function formatarMesAnoBR(valorMes: string) {
   return `${nomesMeses[Number(mes) - 1]} de ${ano}`
 }
 
-function formatMoney(value: number | null) {
-  if (value === null || value === undefined) return "—"
+function formatCompetencia(value: string | null | undefined) {
+  if (!value) return null
 
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(value))
-}
+  const cleanValue = String(value).trim()
 
-function normalizeStatus(value: string | null) {
-  return String(value ?? "").trim().toLowerCase()
-}
-
-function onlyNumbers(value: string | null) {
-  return String(value ?? "").replace(/\D/g, "")
-}
-
-function isPastDate(value: string | null) {
-  if (!value) return false
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const date = new Date(`${String(value).substring(0, 10)}T00:00:00`)
-  date.setHours(0, 0, 0, 0)
-
-  return Number.isFinite(date.getTime()) && date < today
-}
-
-function getStatusLabel(status: string | null, vencimento?: string | null) {
-  const normalized = normalizeStatus(status)
-
-  if (normalized === "pending" && isPastDate(vencimento ?? null)) {
-    return "Vencida"
+  const matchAnoMes = cleanValue.match(/^(\d{4})-(\d{2})$/)
+  if (matchAnoMes) {
+    return `${matchAnoMes[2]}-${matchAnoMes[1]}`
   }
 
-  if (normalized === "pending") return "Aberta"
-  if (normalized === "overdue") return "Vencida"
-  if (normalized === "paid") return "Paga"
-  if (normalized === "error") return "Erro"
-  if (normalized === "canceled") return "Cancelada"
-
-  return status || "Sem status"
-}
-
-function buildWhatsAppChargeLink(item: CobrancaItem) {
-  const digits = onlyNumbers(item.whatsapp)
-
-  if (!digits || !item.bling_link_pagamento) return null
-
-  const normalizedPhone = digits.startsWith("55") ? digits : `55${digits}`
-  const nome = item.responsavel || item.cliente
-  const mensagem = [
-    `Olá, ${nome}.`,
-    "",
-    "Segue o link da sua cobrança do Meu Caixa Inteligente:",
-    item.bling_link_pagamento,
-    "",
-    `Valor: ${formatMoney(item.valor)}`,
-    `Vencimento: ${formatDate(item.vencimento)}`,
-  ].join("\n")
-
-  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(mensagem)}`
-}
-
-function StatusBadge({
-  label,
-  tone = "neutral",
-}: {
-  label: string
-  tone?: "neutral" | "success" | "warning" | "danger" | "blue"
-}) {
-  const tones = {
-    neutral: "border-neutral-200 bg-neutral-50 text-neutral-700",
-    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    warning: "border-amber-200 bg-amber-50 text-amber-800",
-    danger: "border-rose-200 bg-rose-50 text-rose-700",
-    blue: "border-[#cfd8ff] bg-[#eef3ff] text-[#002198]",
+  const matchMesAnoBarra = cleanValue.match(/^(\d{2})\/(\d{4})$/)
+  if (matchMesAnoBarra) {
+    return `${matchMesAnoBarra[1]}-${matchMesAnoBarra[2]}`
   }
 
+  const matchAnoMesSemSeparador = cleanValue.match(/^(\d{4})(\d{2})$/)
+  if (matchAnoMesSemSeparador) {
+    return `${matchAnoMesSemSeparador[2]}-${matchAnoMesSemSeparador[1]}`
+  }
+
+  return cleanValue
+}
+
+function getClienteDocumento(row: CobrancaRow) {
   return (
-    <span
-      className={[
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-        tones[tone],
-      ].join(" ")}
-    >
-      {label}
-    </span>
+    row.documento_cliente ||
+    row.cpf_cnpj ||
+    row.documento ||
+    "Documento não informado"
   )
 }
 
-function ChargeStatusBadge({
-  status,
-  vencimento,
-}: {
-  status: string | null
-  vencimento: string | null
-}) {
-  const normalized = normalizeStatus(status)
-
-  if (normalized === "paid") {
-    return <StatusBadge label="Paga" tone="success" />
-  }
-
-  if (normalized === "pending" && isPastDate(vencimento)) {
-    return <StatusBadge label="Vencida" tone="danger" />
-  }
-
-  if (normalized === "pending") {
-    return <StatusBadge label="Aberta" tone="warning" />
-  }
-
-  if (normalized === "overdue") {
-    return <StatusBadge label="Vencida" tone="danger" />
-  }
-
-  if (normalized === "error") {
-    return <StatusBadge label="Erro" tone="danger" />
-  }
-
-  if (normalized === "canceled") {
-    return <StatusBadge label="Cancelada" tone="neutral" />
-  }
-
-  return <StatusBadge label={getStatusLabel(status, vencimento)} />
+function getClienteRazaoSocial(row: CobrancaRow) {
+  return (
+    row.razao_social ||
+    row.cliente_nome ||
+    row.cliente ||
+    row.business_name ||
+    row.name ||
+    "Cliente não identificado"
+  )
 }
 
-function OverviewCard({
-  title,
-  value,
-  tone = "default",
-  active = false,
-  onClick,
-  rows,
-}: {
-  title: string
-  value: number
-  tone?: "default" | "danger" | "success" | "warning" | "blue" | "neutral"
-  active?: boolean
-  onClick: () => void
-  rows?: Array<{
-    label: string
-    value: number
-    onClick?: () => void
-  }>
-}) {
-  const className =
-    tone === "danger"
-      ? "border border-rose-200 bg-rose-50"
-      : tone === "success"
-        ? "border border-emerald-200 bg-emerald-50"
-        : tone === "warning"
-          ? "border border-amber-200 bg-amber-50"
-          : tone === "blue"
-            ? "border border-[#cfd8ff] bg-[#eef3ff]"
-            : tone === "neutral"
-              ? "border border-neutral-200 bg-neutral-50"
-              : "border border-[#dfe7f7] bg-white"
+function getClienteNome(row: CobrancaRow) {
+  return (
+    row.nome_cliente ||
+    row.nome_responsavel ||
+    row.cliente_nome ||
+    row.cliente ||
+    "Nome não informado"
+  )
+}
 
-  const valueClass =
-    tone === "danger"
-      ? "text-rose-800"
-      : tone === "success"
-        ? "text-emerald-800"
-        : tone === "warning"
-          ? "text-amber-800"
-          : "text-black"
+function getTipoLabel(row: CobrancaRow) {
+  const raw = normalizeText(row.tipo_label || row.tipo || row.ciclo_tipo)
+
+  if (!raw) return "—"
+
+  if (
+    raw.includes("first") ||
+    raw.includes("ativacao") ||
+    raw.includes("activation") ||
+    raw === "first_charge"
+  ) {
+    return "Ativação"
+  }
+
+  if (
+    raw.includes("recurring") ||
+    raw.includes("recurr") ||
+    raw.includes("recorr") ||
+    raw.includes("renov") ||
+    raw.includes("renew") ||
+    raw === "recurring_charge"
+  ) {
+    return "Recorrência"
+  }
+
+  if (raw.includes("cancel")) {
+    return "Cancelamento"
+  }
+
+  return row.tipo_label || row.tipo || row.ciclo_tipo || "—"
+}
+
+function getTipoCode(row: CobrancaRow): TipoFilter {
+  const label = getTipoLabel(row)
+
+  if (label === "Ativação") return "ativacao"
+  if (label === "Recorrência") return "recorrencia"
+  if (label === "Cancelamento") return "cancelamento"
+
+  return "todos"
+}
+
+function getStatusCode(row: CobrancaRow): StatusFilter {
+  const status = normalizeText(row.status_code || row.status || row.cobranca_status)
+  const syncStatus = normalizeText(row.sync_status)
+
+  if (status === "error" || syncStatus === "error") return "erro"
+
+  if (
+    status === "paid" ||
+    status === "pago" ||
+    status === "paga" ||
+    status === "recebido" ||
+    status === "recebida"
+  ) {
+    return "pago"
+  }
+
+  if (
+    status === "canceled" ||
+    status === "cancelada" ||
+    status === "cancelado" ||
+    status === "cancelled"
+  ) {
+    return "cancelado"
+  }
+
+  if (
+    status === "overdue" ||
+    status === "vencido" ||
+    status === "vencida" ||
+    isPastDate(row.vencimento)
+  ) {
+    return "vencido"
+  }
+
+  return "aberto"
+}
+
+function getStatusLabel(row: CobrancaRow) {
+  const code = getStatusCode(row)
+
+  if (code === "aberto") return "Aberto"
+  if (code === "pago") return "Pago"
+  if (code === "vencido") return "Vencido"
+  if (code === "cancelado") return "Cancelado"
+  if (code === "erro") return "Com erro"
+
+  return "Aberto"
+}
+
+function getEmissaoCode(row: CobrancaRow) {
+  const syncStatus = normalizeText(row.sync_status)
+  const status = normalizeText(row.status)
+
+  if (syncStatus === "error" || status === "error") return "erro"
+  if (row.bling_cobranca_id) return "emitida"
+
+  return "pendente_emissao"
+}
+
+function getEmissaoLabel(row: CobrancaRow) {
+  const code = getEmissaoCode(row)
+
+  if (code === "emitida") return "Emitida"
+  if (code === "erro") return "Com erro"
+
+  return "Pendente de emissão"
+}
+
+function isDateInRange(
+  value: string | null | undefined,
+  dateFrom: string,
+  dateTo: string,
+) {
+  if (!dateFrom && !dateTo) return true
+  if (!value) return false
+
+  const cleanValue = String(value).substring(0, 10)
+
+  if (dateFrom && cleanValue < dateFrom) return false
+  if (dateTo && cleanValue > dateTo) return false
+
+  return true
+}
+
+function matchesPeriodo(row: CobrancaRow, dateFrom: string, dateTo: string) {
+  if (!dateFrom && !dateTo) return true
 
   return (
-    <Card
-      className={[
-        "rounded-[24px] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.035)]",
-        className,
-        active ? "ring-2 ring-[#002198] ring-offset-2" : "",
-      ].join(" ")}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex w-full items-center justify-between gap-4 text-left"
-      >
+    isDateInRange(row.vencimento, dateFrom, dateTo) ||
+    isDateInRange(row.pago_em, dateFrom, dateTo) ||
+    isDateInRange(row.created_at, dateFrom, dateTo) ||
+    isDateInRange(row.gerada_em, dateFrom, dateTo)
+  )
+}
+
+function getBlingDocumento(row: CobrancaRow) {
+  return row.bling_numero_documento || row.bling_documento || "—"
+}
+
+function getBlingId(row: CobrancaRow) {
+  return row.bling_cobranca_id || "—"
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "")
+}
+
+function buildWhatsAppChargeLink(row: CobrancaRow) {
+  const whatsapp = onlyDigits(row.whatsapp || "")
+  const paymentLink = row.bling_link_pagamento || ""
+
+  if (!whatsapp || !paymentLink) return null
+
+  const normalizedPhone = whatsapp.startsWith("55") ? whatsapp : `55${whatsapp}`
+
+  const message = [
+    `Olá, ${getClienteNome(row)}.`,
+    "",
+    "Segue o link da sua cobrança do Meu Caixa Inteligente:",
+    paymentLink,
+  ].join("\n")
+
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`
+}
+
+function SummaryCard({
+  title,
+  value,
+  children,
+}: {
+  title: string
+  value: string | number
+  children?: React.ReactNode
+}) {
+  return (
+    <Card className="rounded-[26px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
           {title}
         </p>
 
-        <p className={["text-3xl font-bold leading-none", valueClass].join(" ")}>
-          {numberOrZero(value)}
-        </p>
-      </button>
+        <p className="text-3xl font-bold text-black">{value}</p>
+      </div>
 
-      {rows && rows.length > 0 ? (
-        <div className="mt-3 space-y-1 border-t border-black/5 pt-3">
-          {rows.map((row) => (
-            <button
-              key={row.label}
-              type="button"
-              onClick={row.onClick}
-              disabled={!row.onClick}
-              className={[
-                "flex w-full items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-left text-sm transition",
-                row.onClick
-                  ? "text-neutral-700 hover:bg-white/80"
-                  : "text-neutral-600",
-              ].join(" ")}
-            >
-              <span>{row.label}</span>
-              <span className="font-bold text-black">
-                {numberOrZero(row.value)}
-              </span>
-            </button>
-          ))}
+      {children ? (
+        <div className="mt-4 space-y-2 border-t border-[#eef3ff] pt-3">
+          {children}
         </div>
       ) : null}
     </Card>
   )
 }
 
+function SummaryLine({
+  label,
+  value,
+}: {
+  label: string
+  value: number
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm text-neutral-700">
+      <span>{label}</span>
+      <span className="font-semibold text-black">{value}</span>
+    </div>
+  )
+}
+
 export default function CobrancasPage() {
-  const [items, setItems] = useState<CobrancaItem[]>([])
-  const [summary, setSummary] = useState<Summary>(defaultSummary)
+  const [items, setItems] = useState<CobrancaRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [search, setSearch] = useState("")
-  const [tipo, setTipo] = useState<TipoFilter>("todos")
-  const [status, setStatus] = useState<StatusFilter>("pending")
-  const [syncingId, setSyncingId] = useState<string | null>(null)
-  const [processing, setProcessing] = useState(false)
-  const [processorMessage, setProcessorMessage] = useState<string | null>(null)
+  const [tipoFilter, setTipoFilter] = useState<TipoFilter>("todos")
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos")
 
   const [menuPeriodoAberto, setMenuPeriodoAberto] = useState(false)
   const [periodoSelecionado, setPeriodoSelecionado] =
@@ -459,15 +548,140 @@ export default function CobrancasPage() {
   const [rascunhoPeriodo, setRascunhoPeriodo] =
     useState<PeriodoFiltro>("todos")
   const [rascunhoMes, setRascunhoMes] = useState("")
-  const [rascunhoDataInicial, setRascunhoDataInicial] = useState("")
-  const [rascunhoDataFinal, setRascunhoDataFinal] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
 
   const menuPeriodoRef = useRef<HTMLDivElement | null>(null)
 
-  const statusTotal = summary.pending + summary.overdue + summary.paid
-  const pendenciasTotal = summary.needsAction
+  const loadCobrancas = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/master/cobrancas", {
+        method: "GET",
+        cache: "no-store",
+      })
+
+      const payload = (await response.json()) as ApiPayload
+
+      if (!response.ok || payload?.ok === false || payload?.success === false) {
+        throw new Error(
+          payload?.message ||
+            payload?.error ||
+            "Não foi possível carregar as cobranças.",
+        )
+      }
+
+      setItems(extractArray(payload))
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Erro desconhecido ao carregar cobranças.",
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadCobrancas()
+  }, [loadCobrancas])
+
+  useEffect(() => {
+    if (!menuPeriodoAberto) return
+
+    function handleClickFora(event: MouseEvent) {
+      if (
+        menuPeriodoRef.current &&
+        !menuPeriodoRef.current.contains(event.target as Node)
+      ) {
+        setMenuPeriodoAberto(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickFora)
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickFora)
+    }
+  }, [menuPeriodoAberto])
+
+  const filteredItems = useMemo(() => {
+    const cleanSearch = normalizeText(search)
+
+    return items.filter((item) => {
+      const tipoCode = getTipoCode(item)
+      const statusCode = getStatusCode(item)
+
+      const matchesTipo = tipoFilter === "todos" || tipoFilter === tipoCode
+      const matchesStatus =
+        statusFilter === "todos" || statusFilter === statusCode
+      const matchesDate = matchesPeriodo(item, dateFrom, dateTo)
+
+      const searchable = normalizeText([
+        getClienteDocumento(item),
+        getClienteRazaoSocial(item),
+        getClienteNome(item),
+        getTipoLabel(item),
+        getStatusLabel(item),
+        getEmissaoLabel(item),
+        formatCompetencia(item.competencia),
+        item.vencimento,
+        item.pago_em,
+        item.bling_cobranca_id,
+        item.bling_numero_documento,
+      ].join(" "))
+
+      const matchesSearch = !cleanSearch || searchable.includes(cleanSearch)
+
+      return matchesTipo && matchesStatus && matchesDate && matchesSearch
+    })
+  }, [dateFrom, dateTo, items, search, statusFilter, tipoFilter])
+
+  const summary = useMemo<Summary>(() => {
+    return filteredItems.reduce(
+      (acc, item) => {
+        const tipoCode = getTipoCode(item)
+        const statusCode = getStatusCode(item)
+        const emissaoCode = getEmissaoCode(item)
+
+        acc.total += 1
+
+        if (tipoCode === "ativacao") acc.ativacao += 1
+        if (tipoCode === "recorrencia") acc.recorrencia += 1
+        if (tipoCode === "cancelamento") acc.cancelamento += 1
+
+        if (statusCode === "aberto") acc.aberto += 1
+        if (statusCode === "pago") acc.pago += 1
+        if (statusCode === "vencido") acc.vencido += 1
+        if (statusCode === "erro" || emissaoCode === "erro") acc.comErro += 1
+
+        if (
+          statusCode === "vencido" ||
+          statusCode === "erro" ||
+          emissaoCode === "erro" ||
+          emissaoCode === "pendente_emissao"
+        ) {
+          acc.acaoManual += 1
+        }
+
+        return acc
+      },
+      {
+        total: 0,
+        ativacao: 0,
+        recorrencia: 0,
+        cancelamento: 0,
+        aberto: 0,
+        pago: 0,
+        vencido: 0,
+        comErro: 0,
+        acaoManual: 0,
+      },
+    )
+  }, [filteredItems])
 
   const textoPeriodoBotao = useMemo(() => {
     if (periodoSelecionado === "este_mes") return "Este mês"
@@ -498,91 +712,11 @@ export default function CobrancasPage() {
     return `Filtro aplicado: ${formatDate(dateFrom)} até ${formatDate(dateTo)}`
   }, [dateFrom, dateTo, periodoSelecionado, rascunhoMes])
 
-  const queryString = useMemo(() => {
-    const params = new URLSearchParams()
-
-    params.set("status", status)
-    params.set("tipo", tipo)
-    params.set("limit", "1000")
-
-    if (search.trim()) {
-      params.set("search", search.trim())
-    }
-
-    if (dateFrom) {
-      params.set("dateFrom", dateFrom)
-    }
-
-    if (dateTo) {
-      params.set("dateTo", dateTo)
-    }
-
-    return params.toString()
-  }, [dateFrom, dateTo, search, status, tipo])
-
-  const loadCobrancas = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const response = await fetch(`/api/master/cobrancas?${queryString}`, {
-        method: "GET",
-        cache: "no-store",
-      })
-
-      const payload = (await response.json()) as ApiResponse
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(
-          payload.message || "Não foi possível carregar as cobranças.",
-        )
-      }
-
-      setItems(payload.data ?? [])
-      setSummary(normalizeSummary(payload.summary))
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Erro ao carregar cobranças.",
-      )
-      setItems([])
-      setSummary(defaultSummary)
-    } finally {
-      setLoading(false)
-    }
-  }, [queryString])
-
-  useEffect(() => {
-    void loadCobrancas()
-  }, [loadCobrancas])
-
-  useEffect(() => {
-    if (!menuPeriodoAberto) return
-
-    function handleClickFora(event: MouseEvent) {
-      if (
-        menuPeriodoRef.current &&
-        !menuPeriodoRef.current.contains(event.target as Node)
-      ) {
-        setMenuPeriodoAberto(false)
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickFora)
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickFora)
-    }
-  }, [menuPeriodoAberto])
-
   function abrirMenuPeriodo() {
     const mesAtual = formatarMesInputLocal(new Date())
 
     setRascunhoPeriodo(periodoSelecionado)
     setRascunhoMes(rascunhoMes || mesAtual)
-    setRascunhoDataInicial(dateFrom)
-    setRascunhoDataFinal(dateTo)
     setMenuPeriodoAberto(true)
   }
 
@@ -590,8 +724,6 @@ export default function CobrancasPage() {
     setPeriodoSelecionado("todos")
     setRascunhoPeriodo("todos")
     setRascunhoMes("")
-    setRascunhoDataInicial("")
-    setRascunhoDataFinal("")
     setDateFrom("")
     setDateTo("")
     setMenuPeriodoAberto(false)
@@ -612,8 +744,6 @@ export default function CobrancasPage() {
     setPeriodoSelecionado(tipoPeriodo)
     setRascunhoPeriodo(tipoPeriodo)
     setRascunhoMes(mesReferencia)
-    setRascunhoDataInicial(datas.dataInicial)
-    setRascunhoDataFinal(datas.dataFinal)
     setDateFrom(datas.dataInicial)
     setDateTo(datas.dataFinal)
     setMenuPeriodoAberto(false)
@@ -627,128 +757,15 @@ export default function CobrancasPage() {
     setPeriodoSelecionado("mes")
     setRascunhoPeriodo("mes")
     setRascunhoMes(valorMes)
-    setRascunhoDataInicial(datas.dataInicial)
-    setRascunhoDataFinal(datas.dataFinal)
     setDateFrom(datas.dataInicial)
     setDateTo(datas.dataFinal)
   }
 
-  function abrirPeriodoPersonalizado() {
-    const datasMesAtual = getDatasMesAtual()
-
-    setRascunhoPeriodo("personalizado")
-    setRascunhoDataInicial(dateFrom || datasMesAtual.dataInicial)
-    setRascunhoDataFinal(dateTo || datasMesAtual.dataFinal)
-  }
-
-  function aplicarDataInicialPersonalizada(value: string) {
-    setRascunhoDataInicial(value)
-    setPeriodoSelecionado("personalizado")
-    setRascunhoPeriodo("personalizado")
-    setDateFrom(value)
-
-    if (rascunhoDataFinal) {
-      setDateTo(rascunhoDataFinal)
-    }
-  }
-
-  function aplicarDataFinalPersonalizada(value: string) {
-    setRascunhoDataFinal(value)
-    setPeriodoSelecionado("personalizado")
-    setRascunhoPeriodo("personalizado")
-    setDateTo(value)
-
-    if (rascunhoDataInicial) {
-      setDateFrom(rascunhoDataInicial)
-    }
-  }
-
   function limparFiltros() {
     setSearch("")
-    setTipo("todos")
-    setStatus("pending")
+    setTipoFilter("todos")
+    setStatusFilter("todos")
     aplicarTudo()
-  }
-
-  async function handleSyncCharge(item: CobrancaItem) {
-    try {
-      setSyncingId(item.id)
-
-      const response = await fetch("/api/master/cobrancas/sincronizar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          businessId: item.business_id,
-          subscriptionId: item.assinatura_id,
-          cobrancaId: item.id,
-        }),
-      })
-
-      const payload = await response.json()
-
-      if (!response.ok || payload?.success === false) {
-        throw new Error(
-          payload?.error || "Não foi possível sincronizar a cobrança.",
-        )
-      }
-
-      await loadCobrancas()
-    } catch (syncError) {
-      alert(
-        syncError instanceof Error
-          ? syncError.message
-          : "Erro ao sincronizar cobrança.",
-      )
-    } finally {
-      setSyncingId(null)
-    }
-  }
-
-  async function handleProcessRecurring(dryRun: boolean) {
-    try {
-      setProcessing(true)
-      setProcessorMessage(null)
-
-      const response = await fetch(
-        "/api/master/cobrancas/processar-recorrencia",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            dryRun,
-            limit: 50,
-          }),
-        },
-      )
-
-      const payload = (await response.json()) as ProcessorResponse
-
-      if (!response.ok || payload.success === false) {
-        throw new Error(
-          payload.error || "Não foi possível processar recorrência.",
-        )
-      }
-
-      setProcessorMessage(
-        dryRun
-          ? "Simulação da recorrência executada com sucesso."
-          : "Recorrência processada com sucesso.",
-      )
-
-      await loadCobrancas()
-    } catch (processError) {
-      setProcessorMessage(
-        processError instanceof Error
-          ? processError.message
-          : "Erro ao processar recorrência.",
-      )
-    } finally {
-      setProcessing(false)
-    }
   }
 
   return (
@@ -757,97 +774,31 @@ export default function CobrancasPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Cobranças"
-          subtitle="Acompanhe a última cobrança de cada cliente, envie links, sincronize pagamentos e acompanhe pendências."
+          subtitle="Controle das cobranças geradas, status de pagamento, emissão no Bling e envio manual ao cliente."
         />
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <OverviewCard
-            title="Total"
-            value={summary.total}
-            active={status === "todos" && tipo === "todos"}
-            onClick={() => {
-              setStatus("todos")
-              setTipo("todos")
-            }}
-            rows={[
-              {
-                label: "Renovação",
-                value: summary.renovacao,
-                onClick: () => {
-                  setTipo("renovacao")
-                  setStatus("todos")
-                },
-              },
-              {
-                label: "Ativação",
-                value: summary.ativacao,
-                onClick: () => {
-                  setTipo("ativacao")
-                  setStatus("todos")
-                },
-              },
-              {
-                label: "Cancelamento",
-                value: summary.cancelamento,
-                onClick: () => {
-                  setTipo("todos")
-                  setStatus("canceled")
-                },
-              },
-            ]}
-          />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard title="Total" value={summary.total}>
+            <SummaryLine label="Ativação" value={summary.ativacao} />
+            <SummaryLine label="Recorrência" value={summary.recorrencia} />
+            <SummaryLine label="Cancelamento" value={summary.cancelamento} />
+          </SummaryCard>
 
-          <OverviewCard
-            title="Status"
-            value={statusTotal}
-            tone="warning"
-            active={
-              status === "pending" ||
-              status === "overdue" ||
-              status === "paid"
-            }
-            onClick={() => {
-              setTipo("todos")
-              setStatus("pending")
-            }}
-            rows={[
-              {
-                label: "Aberto",
-                value: summary.pending,
-                onClick: () => setStatus("pending"),
-              },
-              {
-                label: "Vencido",
-                value: summary.overdue,
-                onClick: () => setStatus("overdue"),
-              },
-              {
-                label: "Pago",
-                value: summary.paid,
-                onClick: () => setStatus("paid"),
-              },
-            ]}
-          />
+          <SummaryCard title="Status" value={summary.aberto + summary.pago + summary.vencido}>
+            <SummaryLine label="Aberto" value={summary.aberto} />
+            <SummaryLine label="Pago" value={summary.pago} />
+            <SummaryLine label="Vencido" value={summary.vencido} />
+          </SummaryCard>
 
-          <OverviewCard
-            title="Pendências"
-            value={pendenciasTotal}
-            tone={pendenciasTotal > 0 ? "danger" : "neutral"}
-            active={status === "error" || status === "needs_action"}
-            onClick={() => setStatus("needs_action")}
-            rows={[
-              {
-                label: "Com erro",
-                value: summary.error,
-                onClick: () => setStatus("error"),
-              },
-              {
-                label: "Ação manual",
-                value: summary.needsAction,
-                onClick: () => setStatus("needs_action"),
-              },
-            ]}
-          />
+          <SummaryCard title="Pendências" value={summary.acaoManual}>
+            <SummaryLine label="Com erro" value={summary.comErro} />
+            <SummaryLine label="Ação manual" value={summary.acaoManual} />
+          </SummaryCard>
+
+          <SummaryCard title="Filtro atual" value={filteredItems.length}>
+            <SummaryLine label="Registros exibidos" value={filteredItems.length} />
+            <SummaryLine label="Total cadastrado" value={items.length} />
+          </SummaryCard>
         </div>
 
         <Card className="overflow-visible rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
@@ -857,7 +808,7 @@ export default function CobrancasPage() {
                 Filtros
               </p>
 
-              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_190px_220px_auto]">
+              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_190px_190px_auto]">
                 <div>
                   <label className="text-sm font-medium text-black">
                     Buscar cobrança
@@ -866,7 +817,7 @@ export default function CobrancasPage() {
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cliente, responsável, e-mail, WhatsApp, Bling ou competência"
+                    placeholder="Cliente, documento, tipo, status, Bling ou competência"
                     className="mt-2 h-11"
                   />
                 </div>
@@ -875,15 +826,17 @@ export default function CobrancasPage() {
                   <label className="text-sm font-medium text-black">Tipo</label>
 
                   <select
-                    value={tipo}
+                    value={tipoFilter}
                     onChange={(event) =>
-                      setTipo(event.target.value as TipoFilter)
+                      setTipoFilter(event.target.value as TipoFilter)
                     }
                     className="mt-2 h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
                   >
-                    <option value="todos">Todos</option>
-                    <option value="ativacao">Ativação</option>
-                    <option value="renovacao">Renovação</option>
+                    {tipoOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -893,19 +846,17 @@ export default function CobrancasPage() {
                   </label>
 
                   <select
-                    value={status}
+                    value={statusFilter}
                     onChange={(event) =>
-                      setStatus(event.target.value as StatusFilter)
+                      setStatusFilter(event.target.value as StatusFilter)
                     }
                     className="mt-2 h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
                   >
-                    <option value="todos">Todos</option>
-                    <option value="pending">Aberta</option>
-                    <option value="overdue">Vencida</option>
-                    <option value="paid">Paga</option>
-                    <option value="error">Erro</option>
-                    <option value="canceled">Cancelada</option>
-                    <option value="needs_action">Ação manual</option>
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -969,166 +920,41 @@ export default function CobrancasPage() {
                         <button
                           type="button"
                           onClick={aplicarTudo}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "todos"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              ✨
-                            </span>
-                            Tudo
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "todos" ? "✓" : ""}
-                          </span>
+                          Tudo
                         </button>
 
                         <button
                           type="button"
                           onClick={() => aplicarPeriodoRapido("este_mes")}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "este_mes"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              📅
-                            </span>
-                            Este mês
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "este_mes" ? "✓" : ""}
-                          </span>
+                          Este mês
                         </button>
 
                         <button
                           type="button"
                           onClick={() => aplicarPeriodoRapido("mes_passado")}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "mes_passado"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              🗓️
-                            </span>
-                            Mês passado
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "mes_passado" ? "✓" : ""}
-                          </span>
+                          Mês passado
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const mesAtual = formatarMesInputLocal(new Date())
-                            setRascunhoPeriodo("mes")
-                            setRascunhoMes(rascunhoMes || mesAtual)
-                          }}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            rascunhoPeriodo === "mes"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
-                        >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              📆
-                            </span>
-                            Selecionar mês
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {rascunhoPeriodo === "mes" ? "✓" : ""}
-                          </span>
-                        </button>
-
-                        {rascunhoPeriodo === "mes" ? (
-                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
-                            <input
-                              type="month"
-                              value={rascunhoMes}
-                              onChange={(event) =>
-                                aplicarMesSelecionado(event.target.value)
-                              }
-                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
-                            />
-                          </div>
-                        ) : null}
-
-                        <button
-                          type="button"
-                          onClick={abrirPeriodoPersonalizado}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            rascunhoPeriodo === "personalizado"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
-                        >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              🔎
-                            </span>
-                            Personalizado
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {rascunhoPeriodo === "personalizado" ? "✓" : ""}
-                          </span>
-                        </button>
-
-                        {rascunhoPeriodo === "personalizado" ? (
-                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
-                            <input
-                              type="date"
-                              value={rascunhoDataInicial}
-                              onChange={(event) =>
-                                aplicarDataInicialPersonalizada(
-                                  event.target.value,
-                                )
-                              }
-                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
-                            />
-
-                            <input
-                              type="date"
-                              value={rascunhoDataFinal}
-                              onChange={(event) =>
-                                aplicarDataFinalPersonalizada(
-                                  event.target.value,
-                                )
-                              }
-                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
-                            />
-                          </div>
-                        ) : null}
-
-                        <div className="my-1 border-t border-[#dfe7f7]" />
+                        <input
+                          type="month"
+                          value={rascunhoMes}
+                          onChange={(event) =>
+                            aplicarMesSelecionado(event.target.value)
+                          }
+                          className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
+                        />
 
                         <button
                           type="button"
                           onClick={() => setMenuPeriodoAberto(false)}
-                          className="flex h-9 w-full items-center gap-2 rounded-2xl px-3 text-left text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs text-[#002198]">
-                            ✕
-                          </span>
                           Fechar
                         </button>
                       </div>
@@ -1146,56 +972,10 @@ export default function CobrancasPage() {
                   </p>
 
                   <p className="mt-1 text-[11px] leading-4 text-neutral-500">
-                    Usa a data em que a cobrança foi gerada.
+                    Usa vencimento, pagamento ou criação da cobrança.
                   </p>
                 </div>
               </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
-                Rotina automática
-              </p>
-
-              <h2 className="mt-1 text-xl font-bold text-black">
-                Processamento de recorrência
-              </h2>
-
-              <p className="mt-1 text-sm leading-6 text-neutral-600">
-                Use a simulação para conferir o que o app faria. Use o
-                processamento real apenas quando quiser acionar manualmente a
-                mesma rotina automática do GitHub Actions.
-              </p>
-
-              {processorMessage ? (
-                <p className="mt-3 text-sm font-semibold text-[#002198]">
-                  {processorMessage}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => void handleProcessRecurring(true)}
-                disabled={processing}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#002198] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Simular rotina
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void handleProcessRecurring(false)}
-                disabled={processing}
-                className="inline-flex h-11 items-center justify-center rounded-2xl bg-[#002198] px-4 text-sm font-semibold text-white transition hover:bg-[#00166f] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {processing ? "Processando..." : "Processar agora"}
-              </button>
             </div>
           </div>
         </Card>
@@ -1211,192 +991,124 @@ export default function CobrancasPage() {
             <p className="text-base font-semibold text-black">
               Carregando cobranças...
             </p>
-
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Estou organizando a visão financeira da Torre.
-            </p>
           </Card>
-        ) : items.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <p className="text-base font-semibold text-black">
               Nenhuma cobrança encontrada.
             </p>
-
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Ajuste os filtros ou limpe a busca.
-            </p>
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.25fr_0.8fr_0.75fr_0.75fr_0.85fr_0.9fr_0.95fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="grid grid-cols-[1.22fr_0.82fr_0.55fr_0.6fr_0.82fr_0.8fr_1fr_0.6fr] items-start gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198]">
               <span>Cliente</span>
               <span>Tipo</span>
               <span>Status</span>
-              <span>Valor</span>
+              <span className="text-center">Valor</span>
               <span>Vencimento</span>
+              <span>Cobrança</span>
               <span>Bling</span>
-              <span className="text-right">Ação</span>
+              <span className="text-center">Ação</span>
             </div>
 
             <div className="divide-y divide-[#dfe7f7]">
-              {items.map((item) => {
-                const whatsappChargeLink = buildWhatsAppChargeLink(item)
+              {filteredItems.map((item, index) => {
+                const paymentLink = item.bling_link_pagamento || null
+                const whatsappLink = buildWhatsAppChargeLink(item)
 
                 return (
                   <div
-                    key={item.id}
-                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.25fr_0.8fr_0.75fr_0.75fr_0.85fr_0.9fr_0.95fr] xl:items-start"
+                    key={item.id || `${item.business_id}-${index}`}
+                    className="grid grid-cols-[1.22fr_0.82fr_0.55fr_0.6fr_0.82fr_0.8fr_1fr_0.6fr] items-start gap-4 px-5 py-4 text-sm leading-6 text-neutral-700"
                   >
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Cliente
+                      <p className="text-[#002198]">
+                        {getClienteDocumento(item)}
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {item.cliente}
+                      <p className="text-black">
+                        {getClienteRazaoSocial(item)}
                       </p>
 
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {item.responsavel || "Responsável não informado"}
-                      </p>
-
-                      <p className="mt-1 break-all text-xs text-neutral-500">
-                        {item.email_financeiro || "E-mail não informado"}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        WhatsApp: {item.whatsapp || "não informado"}
-                      </p>
+                      <p>{getClienteNome(item)}</p>
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Tipo
-                      </p>
+                      <p>{getTipoLabel(item)}</p>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {item.tipo_label}
-                      </p>
-
-                      <p className="mt-2 text-xs text-neutral-500">
-                        Criada em {formatDate(item.data_criacao)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Status
-                      </p>
-
-                      <div className="mt-1">
-                        <ChargeStatusBadge
-                          status={item.status}
-                          vencimento={item.vencimento}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Valor
-                      </p>
-
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {formatMoney(item.valor)}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Competência: {item.competencia || "—"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Vencimento
-                      </p>
-
-                      <p className="mt-1 text-sm text-neutral-700">
-                        {formatDate(item.vencimento)}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Pago em: {formatDate(item.pago_em)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Bling
-                      </p>
-
-                      <p className="mt-1 break-all text-xs text-neutral-700">
-                        ID: {item.bling_cobranca_id || "—"}
-                      </p>
-
-                      <p className="mt-1 break-all text-xs text-neutral-500">
-                        Doc.: {item.bling_numero_documento || "—"}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Última consulta:{" "}
-                        {formatDateTime(item.ultima_consulta_bling_em)}
-                      </p>
-
-                      {item.sync_error ? (
-                        <p className="mt-2 text-xs font-semibold text-rose-700">
-                          {item.sync_error}
+                      {formatCompetencia(item.competencia) ? (
+                        <p className="text-neutral-500">
+                          Competência: {formatCompetencia(item.competencia)}
                         </p>
                       ) : null}
                     </div>
 
-                    <div className="xl:text-right">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Ação
+                    <div>
+                      <p>{getStatusLabel(item)}</p>
+                    </div>
+
+                    <div className="text-center">
+                      <p>{formatMoney(getValor(item))}</p>
+                    </div>
+
+                    <div>
+                      <p>{formatDate(item.vencimento)}</p>
+                      <p>Pago em: {formatDate(item.pago_em)}</p>
+                    </div>
+
+                    <div>
+                      <p>{getEmissaoLabel(item)}</p>
+                    </div>
+
+                    <div>
+                      <p>ID: {getBlingId(item)}</p>
+                      <p>Doc.: {getBlingDocumento(item)}</p>
+                      <p>
+                        Última consulta:{" "}
+                        {formatDate(item.ultima_consulta_bling_em)}
                       </p>
+                    </div>
 
-                      {item.needs_action ? (
-                        <div className="mb-2">
-                          <StatusBadge label="Ação manual" tone="danger" />
-                        </div>
-                      ) : null}
-
-                      {item.bling_link_pagamento ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            window.open(
-                              item.bling_link_pagamento || "",
-                              "_blank",
-                            )
-                          }
-                          className="mb-2 inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                    <div className="flex justify-center gap-2">
+                      {paymentLink ? (
+                        <a
+                          href={paymentLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir cobrança"
+                          aria-label="Abrir cobrança"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
                         >
-                          Abrir cobrança
-                        </button>
-                      ) : null}
-
-                      {whatsappChargeLink ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            window.open(whatsappChargeLink, "_blank")
-                          }
-                          className="mb-2 inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span
+                          title="Cobrança sem link"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
                         >
-                          Enviar cobrança
-                        </button>
-                      ) : null}
+                          <ExternalLink className="h-4 w-4" />
+                        </span>
+                      )}
 
-                      <button
-                        type="button"
-                        onClick={() => void handleSyncCharge(item)}
-                        disabled={syncingId === item.id}
-                        className="inline-flex w-full items-center justify-center rounded-2xl border border-[#002198] bg-[#002198] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#00166f] disabled:cursor-not-allowed disabled:opacity-60 xl:w-auto"
-                      >
-                        {syncingId === item.id
-                          ? "Sincronizando..."
-                          : "Sincronizar"}
-                      </button>
+                      {whatsappLink ? (
+                        <a
+                          href={whatsappLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Enviar cobrança pelo WhatsApp"
+                          aria-label="Enviar cobrança pelo WhatsApp"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span
+                          title="Sem WhatsApp ou sem link de cobrança"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </span>
+                      )}
                     </div>
                   </div>
                 )
