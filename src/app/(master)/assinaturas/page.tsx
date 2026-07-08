@@ -44,7 +44,10 @@ type Summary = {
 type AssinaturaItem = {
   id: string
   business_id: string
+  documento_cliente: string | null
   cliente: string
+  razao_social: string | null
+  nome_cliente: string | null
   responsavel: string | null
   email: string | null
   whatsapp: string | null
@@ -52,6 +55,10 @@ type AssinaturaItem = {
   plano_tipo: "Trial" | "Plano"
   plano_label: string
   plano_valor: number | null
+  forma_pagamento: string | null
+  forma_pagamento_label: string | null
+  dia_vencimento: number | null
+  dia_vencimento_label: string | null
   data_cadastro: string | null
   data_ativacao: string | null
   data_referencia: string | null
@@ -226,7 +233,7 @@ function formatarMesAnoBR(valorMes: string) {
 }
 
 function formatMoney(value: number | null | undefined) {
-  if (value === null || value === undefined) return ""
+  if (value === null || value === undefined) return "—"
 
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -270,42 +277,6 @@ function getSafePlanoLabel(item: AssinaturaItem) {
   if (tipo === "Trial") return "Trial"
 
   return item.plano_label || "Plano Lucro Real"
-}
-
-function getPlanoClass(tipo: "Trial" | "Plano") {
-  if (tipo === "Plano") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800"
-  }
-
-  return "border-[#cfd8ff] bg-[#eef3ff] text-[#002198]"
-}
-
-function getStatusClass(status: AssinaturaItem["status_code"]) {
-  if (status === "assinante_ativo" || status === "trial_ativo") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800"
-  }
-
-  if (status === "trial_congelado") {
-    return "border-amber-200 bg-amber-50 text-amber-900"
-  }
-
-  if (status === "trial_encerrado" || status === "assinante_bloqueado") {
-    return "border-rose-200 bg-rose-50 text-rose-700"
-  }
-
-  if (status === "assinante_encerrado") {
-    return "border-neutral-200 bg-neutral-50 text-neutral-700"
-  }
-
-  return "border-[#dfe7f7] bg-[#f8fbff] text-[#002198]"
-}
-
-function getCobrancaEmissaoClass(emitida: boolean) {
-  if (emitida) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800"
-  }
-
-  return "border-amber-200 bg-amber-50 text-amber-900"
 }
 
 function statusBelongsToPlano(status: StatusFilter, plano: PlanoFilter) {
@@ -839,7 +810,7 @@ export default function TorreAssinaturasPage() {
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cliente, responsável, e-mail, WhatsApp, plano ou status"
+                    placeholder="Cliente, documento, responsável, e-mail, WhatsApp, plano ou status"
                     className="mt-2 h-11"
                   />
                 </div>
@@ -1147,12 +1118,13 @@ export default function TorreAssinaturasPage() {
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.2fr_0.9fr_1.2fr_0.75fr_0.85fr_0.45fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="hidden grid-cols-[1.4fr_1fr_0.75fr_0.65fr_0.85fr_0.75fr_0.45fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
               <span>Cliente</span>
               <span>Plano</span>
-              <span>Endereço</span>
               <span>Status</span>
-              <span>Cobrança</span>
+              <span>Valor</span>
+              <span>Pagto</span>
+              <span>Venc</span>
               <span className="text-right">Ação</span>
             </div>
 
@@ -1160,34 +1132,31 @@ export default function TorreAssinaturasPage() {
               {items.map((item) => {
                 const whatsappLink = buildWhatsAppLink(item.whatsapp)
                 const emailLink = buildMailLink(item.email)
-                const planoTipo = getSafePlanoTipo(item)
                 const planoLabel = getSafePlanoLabel(item)
                 const planoValue = formatMoney(item.plano_valor)
 
                 return (
                   <div
                     key={item.id}
-                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.2fr_0.9fr_1.2fr_0.75fr_0.85fr_0.45fr] xl:items-start"
+                    className="grid gap-4 px-5 py-4 xl:grid-cols-[1.4fr_1fr_0.75fr_0.65fr_0.85fr_0.75fr_0.45fr] xl:items-start"
                   >
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
                         Cliente
                       </p>
 
+                      <p className="mt-1 text-xs font-semibold text-[#002198]">
+                        {item.documento_cliente || "Documento não informado"}
+                      </p>
+
                       <p className="mt-1 text-sm font-semibold text-black">
-                        {item.cliente}
+                        {item.razao_social || item.cliente}
                       </p>
 
                       <p className="mt-1 text-xs text-neutral-500">
-                        {item.responsavel || "Responsável não informado"}
-                      </p>
-
-                      <p className="mt-1 break-all text-xs text-neutral-500">
-                        {item.email || "E-mail não informado"}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        WhatsApp: {item.whatsapp || "não informado"}
+                        {item.nome_cliente ||
+                          item.responsavel ||
+                          "Nome não informado"}
                       </p>
                     </div>
 
@@ -1196,34 +1165,13 @@ export default function TorreAssinaturasPage() {
                         Plano
                       </p>
 
-                      <span
-                        className={[
-                          "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          getPlanoClass(planoTipo),
-                        ].join(" ")}
-                      >
+                      <p className="mt-1 text-sm font-semibold text-black">
                         {planoLabel}
-                      </span>
+                      </p>
 
-                      {planoTipo === "Plano" && planoValue ? (
-                        <p className="mt-2 text-xs text-neutral-500">
-                          {planoValue}
-                        </p>
-                      ) : null}
-
-                      <p className="mt-2 text-xs text-neutral-500">
+                      <p className="mt-1 text-xs text-neutral-500">
                         {item.data_referencia_label}:{" "}
                         {formatDate(item.data_referencia)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Endereço
-                      </p>
-
-                      <p className="mt-1 text-xs leading-5 text-neutral-600">
-                        {item.endereco_cobranca || "Endereço não informado"}
                       </p>
                     </div>
 
@@ -1232,36 +1180,45 @@ export default function TorreAssinaturasPage() {
                         Status
                       </p>
 
-                      <span
-                        className={[
-                          "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          getStatusClass(item.status_code),
-                        ].join(" ")}
-                      >
+                      <p className="mt-1 text-sm font-semibold text-black">
                         {item.status_label}
-                      </span>
+                      </p>
+
+                      {item.precisa_atencao ? (
+                        <p className="mt-1 text-xs font-semibold text-rose-700">
+                          Ação necessária
+                        </p>
+                      ) : null}
                     </div>
 
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Cobrança
+                        Valor
                       </p>
 
-                      <span
-                        className={[
-                          "mt-1 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          getCobrancaEmissaoClass(item.cobranca_emitida),
-                        ].join(" ")}
-                      >
-                        {item.cobranca_emissao_label}
-                      </span>
+                      <p className="mt-1 text-sm font-semibold text-black">
+                        {planoValue}
+                      </p>
+                    </div>
 
-                      <p className="mt-2 text-xs text-neutral-500">
-                        Próx. venc.: {formatDate(item.cobranca_vencimento)}
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Forma de Pagamento
                       </p>
 
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {formatMoney(item.cobranca_valor) || "—"}
+                      <p className="mt-1 text-sm text-neutral-700">
+                        {item.forma_pagamento_label || "Não informado"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
+                        Dia Vencimento
+                      </p>
+
+                      <p className="mt-1 text-sm text-neutral-700">
+                        {item.dia_vencimento_label ||
+                          formatDate(item.proximo_vencimento)}
                       </p>
                     </div>
 
@@ -1270,7 +1227,7 @@ export default function TorreAssinaturasPage() {
                         Ação
                       </p>
 
-                      <div className="mt-2 flex justify-start gap-2 xl:justify-end">
+                      <div className="mt-1 flex justify-start gap-2 xl:justify-end">
                         {whatsappLink ? (
                           <a
                             href={whatsappLink}

@@ -28,6 +28,7 @@ type AssinaturaRow = {
   tolerancia_dias: number | null
   created_at: string | null
   updated_at: string | null
+  [key: string]: unknown
 }
 
 type CobrancaRow = {
@@ -59,7 +60,10 @@ type StatusCode =
 type AssinaturaItem = {
   id: string
   business_id: string
+  documento_cliente: string | null
   cliente: string
+  razao_social: string | null
+  nome_cliente: string | null
   responsavel: string | null
   email: string | null
   whatsapp: string | null
@@ -67,6 +71,10 @@ type AssinaturaItem = {
   plano_tipo: PlanoTipo
   plano_label: string
   plano_valor: number | null
+  forma_pagamento: string | null
+  forma_pagamento_label: string | null
+  dia_vencimento: number | null
+  dia_vencimento_label: string | null
   data_cadastro: string | null
   data_ativacao: string | null
   data_referencia: string | null
@@ -160,9 +168,9 @@ function getChargeStatusLabel(value: string | null) {
   return "Sem cobrança"
 }
 
-function getLatestByBusiness<T extends { business_id: string; created_at: string | null }>(
-  rows: T[],
-) {
+function getLatestByBusiness<
+  T extends { business_id: string; created_at: string | null },
+>(rows: T[]) {
   const map = new Map<string, T>()
 
   rows.forEach((row) => {
@@ -233,7 +241,7 @@ function getStringValue(value: unknown) {
   return text || null
 }
 
-function pickFirstString(row: BusinessRow, keys: string[]) {
+function pickFirstString(row: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = getStringValue(row[key])
 
@@ -241,6 +249,67 @@ function pickFirstString(row: BusinessRow, keys: string[]) {
   }
 
   return null
+}
+
+function formatCpfCnpj(value: string | null) {
+  if (!value) return null
+
+  const digits = value.replace(/\D/g, "")
+
+  if (digits.length === 11) {
+    return `${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}`
+  }
+
+  if (digits.length === 14) {
+    return `${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8, 12)}-${digits.substring(12)}`
+  }
+
+  return value
+}
+
+function getDocumentoCliente(business: BusinessRow) {
+  const rawDocument = pickFirstString(business, [
+    "cnpj",
+    "cpf",
+    "cpf_cnpj",
+    "documento",
+    "document",
+    "tax_id",
+    "taxId",
+    "billing_documento",
+    "billing_cpf_cnpj",
+    "billing_cnpj",
+    "billing_cpf",
+  ])
+
+  return formatCpfCnpj(rawDocument)
+}
+
+function getRazaoSocial(business: BusinessRow) {
+  return (
+    pickFirstString(business, [
+      "razao_social",
+      "razaoSocial",
+      "legal_name",
+      "legalName",
+      "nome_empresa",
+      "company_name",
+      "name",
+    ]) || business.name
+  )
+}
+
+function getNomeCliente(business: BusinessRow) {
+  return (
+    pickFirstString(business, [
+      "nome_fantasia",
+      "nomeFantasia",
+      "fantasy_name",
+      "trade_name",
+      "nome",
+      "nome_responsavel",
+    ]) || business.nome_responsavel
+  )
 }
 
 function formatCep(value: string | null) {
@@ -348,6 +417,66 @@ function getBillingAddress(business: BusinessRow) {
   ].filter(Boolean)
 
   return partes.length > 0 ? partes.join(" · ") : null
+}
+
+function getPaymentMethodValue(assinatura: AssinaturaRow | null) {
+  if (!assinatura) return null
+
+  return pickFirstString(assinatura, [
+    "payment_method",
+    "forma_pagamento",
+    "metodo_pagamento",
+    "billing_payment_method",
+    "paymentMethod",
+  ])
+}
+
+function getPaymentMethodLabel(value: string | null) {
+  const normalized = normalizeText(value)
+
+  if (!normalized) return null
+  if (normalized === "pix") return "Pix"
+  if (normalized === "boleto") return "Boleto"
+  if (normalized === "credit_card") return "Cartão"
+  if (normalized === "cartao") return "Cartão"
+
+  return value
+}
+
+function getDiaVencimentoValue(assinatura: AssinaturaRow | null) {
+  if (!assinatura) return null
+
+  const rawValue = pickFirstString(assinatura, [
+    "dia_vencimento",
+    "billing_due_day",
+    "due_day",
+    "vencimento_dia",
+    "diaVencimento",
+  ])
+
+  if (rawValue) {
+    const number = Number(rawValue)
+
+    if (Number.isFinite(number) && number > 0) {
+      return Math.floor(number)
+    }
+  }
+
+  if (assinatura.proximo_vencimento) {
+    const day = Number(String(assinatura.proximo_vencimento).substring(8, 10))
+
+    if (Number.isFinite(day) && day > 0) {
+      return day
+    }
+  }
+
+  return null
+}
+
+function getDiaVencimentoLabel(value: number | null) {
+  if (!value) return null
+
+  return `Dia ${value}`
 }
 
 function resolveStatus(
@@ -473,7 +602,6 @@ function getPlanoLabel(assinatura: AssinaturaRow | null, dataAtivacao: string | 
   const plano = String(assinatura?.plano ?? "").trim()
 
   if (!plano) return "Plano Lucro Real"
-
   if (normalizeText(plano) === "lucro_real") return "Plano Lucro Real"
 
   return plano
@@ -505,12 +633,18 @@ function matchesSearch(item: AssinaturaItem, search: string) {
 
   const content = normalizeText(
     [
+      item.documento_cliente,
       item.cliente,
+      item.razao_social,
+      item.nome_cliente,
       item.responsavel,
       item.email,
       item.whatsapp,
       item.endereco_cobranca,
       item.plano_label,
+      item.plano_valor,
+      item.forma_pagamento_label,
+      item.dia_vencimento_label,
       item.status_label,
       item.cobranca_label,
       item.cobranca_emissao_label,
@@ -616,9 +750,7 @@ export async function GET(request: NextRequest) {
       businessIds.length > 0
         ? await supabaseAdmin
             .from("ci_assinaturas")
-            .select(
-              "id, business_id, status, plano, valor, trial_started_at, trial_ends_at, trial_converted_at, proximo_vencimento, tolerancia_dias, created_at, updated_at",
-            )
+            .select("*")
             .in("business_id", businessIds)
             .order("created_at", { ascending: false })
         : { data: [], error: null }
@@ -659,11 +791,18 @@ export async function GET(request: NextRequest) {
       const resolved = resolveStatus(assinatura, dataAtivacao)
       const reference = getDataReferencia(business.created_at, dataAtivacao)
       const cobrancaEmitida = Boolean(latestCharge?.id)
+      const paymentMethod = getPaymentMethodValue(assinatura)
+      const diaVencimento = getDiaVencimentoValue(assinatura)
+      const razaoSocial = getRazaoSocial(business)
+      const nomeCliente = getNomeCliente(business)
 
       return {
         id: assinatura?.id || business.id,
         business_id: business.id,
-        cliente: business.name || "Cliente sem nome",
+        documento_cliente: getDocumentoCliente(business),
+        cliente: business.name || razaoSocial || "Cliente sem nome",
+        razao_social: razaoSocial,
+        nome_cliente: nomeCliente,
         responsavel: business.nome_responsavel,
         email: business.email_financeiro,
         whatsapp: business.whatsapp,
@@ -673,6 +812,10 @@ export async function GET(request: NextRequest) {
         plano_valor: dataAtivacao
           ? assinatura?.valor ?? latestCharge?.valor ?? null
           : null,
+        forma_pagamento: paymentMethod,
+        forma_pagamento_label: getPaymentMethodLabel(paymentMethod),
+        dia_vencimento: diaVencimento,
+        dia_vencimento_label: getDiaVencimentoLabel(diaVencimento),
         data_cadastro: business.created_at,
         data_ativacao: dataAtivacao,
         data_referencia: reference.data,
