@@ -37,12 +37,17 @@ type PeriodoFiltro =
 
 type MasterCliente = {
   business_id?: string | null
+
   documento_cliente?: string | null
+  cpf_cnpj?: string | null
+  documento?: string | null
+
   razao_social?: string | null
   nome_cliente?: string | null
   negocio?: string | null
   name?: string | null
   nome_responsavel?: string | null
+
   email_financeiro?: string | null
   whatsapp?: string | null
   cliente_criado_em?: string | null
@@ -58,32 +63,30 @@ type MasterCliente = {
 
   assinatura_id?: string | null
   assinatura_status?: string | null
-  assinatura_status_code?: StatusFilter | null
+  assinatura_status_code?: StatusFilter | "sem_assinatura" | null
   assinatura_status_label?: string | null
+
   plano?: string | null
   plano_label?: string | null
   assinatura_valor?: number | null
+
   trial_started_at?: string | null
   trial_ends_at?: string | null
   trial_converted_at?: string | null
   data_ativacao?: string | null
+
   proximo_vencimento?: string | null
+  dia_vencimento?: number | string | null
+
   forma_pagamento?: string | null
   forma_pagamento_label?: string | null
-  assinatura_criada_em?: string | null
-
-  total_lancamentos?: number | null
 
   cobranca_id?: string | null
   cobranca_status?: string | null
-  cobranca_valor?: number | null
+  cobranca_valor?: number | string | null
   cobranca_vencimento?: string | null
-  cobranca_sync_status?: string | null
-  cobranca_ciclo_tipo?: string | null
   cobranca_bling_id?: string | null
   cobranca_link_pagamento?: string | null
-
-  alerta_financeiro?: string | null
 }
 
 type ApiResponse = {
@@ -93,6 +96,7 @@ type ApiResponse = {
   error?: string
   data?: MasterCliente[]
   clientes?: MasterCliente[]
+  items?: MasterCliente[]
 }
 
 const defaultSummary = {
@@ -137,13 +141,17 @@ function formatDate(value: string | null | undefined) {
   return `${day}/${month}/${year}`
 }
 
-function formatMoney(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—"
+function formatMoney(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return "—"
+
+  const numberValue = Number(value)
+
+  if (!Number.isFinite(numberValue)) return "—"
 
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Number(value))
+  }).format(numberValue)
 }
 
 function formatarDataInputLocal(data: Date) {
@@ -222,19 +230,31 @@ function formatarMesAnoBR(valorMes: string) {
   return `${nomesMeses[Number(mes) - 1]} de ${ano}`
 }
 
-function getClienteNome(cliente: MasterCliente) {
-  return cliente.negocio || cliente.name || "Cliente sem nome"
+function getClienteDocumento(cliente: MasterCliente) {
+  return (
+    cliente.documento_cliente ||
+    cliente.cpf_cnpj ||
+    cliente.documento ||
+    "Documento não informado"
+  )
 }
 
 function getRazaoSocial(cliente: MasterCliente) {
-  return cliente.razao_social || getClienteNome(cliente)
+  return (
+    cliente.razao_social ||
+    cliente.negocio ||
+    cliente.name ||
+    "Cliente sem razão social"
+  )
 }
 
 function getNomeCliente(cliente: MasterCliente) {
   return (
     cliente.nome_cliente ||
     cliente.nome_responsavel ||
-    getClienteNome(cliente)
+    cliente.negocio ||
+    cliente.name ||
+    "Nome não informado"
   )
 }
 
@@ -400,14 +420,6 @@ function getEnderecoOrdenado(cliente: MasterCliente) {
   return cliente.endereco_completo || "Endereço não informado"
 }
 
-function getPlanoLabel(cliente: MasterCliente) {
-  return cliente.plano_label || "—"
-}
-
-function getFormaPagamentoLabel(cliente: MasterCliente) {
-  return cliente.forma_pagamento_label || "Pagamento não informado"
-}
-
 function SummaryCard({
   label,
   value,
@@ -510,7 +522,7 @@ export default function ClientesPage() {
         )
       }
 
-      setClientes(payload.data ?? payload.clientes ?? [])
+      setClientes(payload.data ?? payload.clientes ?? payload.items ?? [])
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -605,11 +617,9 @@ export default function ClientesPage() {
       const matchesDate = matchesDateFilter(cliente, dateFrom, dateTo)
 
       const searchable = normalizeText([
-        cliente.documento_cliente,
+        getClienteDocumento(cliente),
         getRazaoSocial(cliente),
         getNomeCliente(cliente),
-        getClienteNome(cliente),
-        cliente.nome_responsavel,
         getEmail(cliente),
         getWhatsapp(cliente),
         getEnderecoOrdenado(cliente),
@@ -756,7 +766,7 @@ export default function ClientesPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Central de clientes"
-          subtitle="Base cadastral dos clientes do Caixa Inteligente, com contato, endereço, plano, valor, ativação e status."
+          subtitle="Base cadastral dos clientes do Caixa Inteligente, com cadastro, ativação, plano, valor e status."
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
@@ -824,7 +834,7 @@ export default function ClientesPage() {
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cliente, documento, responsável, e-mail, WhatsApp, plano ou status"
+                    placeholder="Cliente, documento, endereço, plano ou status"
                     className="mt-2 h-11"
                   />
                 </div>
@@ -927,128 +937,56 @@ export default function ClientesPage() {
                         <button
                           type="button"
                           onClick={aplicarTudo}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "todos"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              ✨
-                            </span>
-                            Tudo
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "todos" ? "✓" : ""}
-                          </span>
+                          Tudo
                         </button>
 
                         <button
                           type="button"
                           onClick={() => aplicarPeriodoRapido("este_mes")}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "este_mes"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              📅
-                            </span>
-                            Este mês
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "este_mes" ? "✓" : ""}
-                          </span>
+                          Este mês
                         </button>
 
                         <button
                           type="button"
                           onClick={() => aplicarPeriodoRapido("mes_passado")}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "mes_passado"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              🗓️
-                            </span>
-                            Mês passado
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "mes_passado" ? "✓" : ""}
-                          </span>
+                          Mês passado
                         </button>
 
                         <button
                           type="button"
                           onClick={abrirSelecionarMes}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            rascunhoPeriodo === "mes"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              📆
-                            </span>
-                            Selecionar mês
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {rascunhoPeriodo === "mes" ? "✓" : ""}
-                          </span>
+                          Selecionar mês
                         </button>
 
                         {rascunhoPeriodo === "mes" ? (
-                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
-                            <input
-                              type="month"
-                              value={rascunhoMes}
-                              onChange={(event) =>
-                                aplicarMesSelecionado(event.target.value)
-                              }
-                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
-                            />
-                          </div>
+                          <input
+                            type="month"
+                            value={rascunhoMes}
+                            onChange={(event) =>
+                              aplicarMesSelecionado(event.target.value)
+                            }
+                            className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
+                          />
                         ) : null}
 
                         <button
                           type="button"
                           onClick={abrirPeriodoPersonalizado}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            rascunhoPeriodo === "personalizado"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              🔎
-                            </span>
-                            Personalizado
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {rascunhoPeriodo === "personalizado" ? "✓" : ""}
-                          </span>
+                          Personalizado
                         </button>
 
                         {rascunhoPeriodo === "personalizado" ? (
-                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
+                          <div className="space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
                             <input
                               type="date"
                               value={rascunhoDataInicial}
@@ -1073,16 +1011,11 @@ export default function ClientesPage() {
                           </div>
                         ) : null}
 
-                        <div className="my-1 border-t border-[#dfe7f7]" />
-
                         <button
                           type="button"
                           onClick={() => setMenuPeriodoAberto(false)}
-                          className="flex h-9 w-full items-center gap-2 rounded-2xl px-3 text-left text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs text-[#002198]">
-                            ✕
-                          </span>
                           Fechar
                         </button>
                       </div>
@@ -1128,11 +1061,11 @@ export default function ClientesPage() {
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="grid grid-cols-[1.28fr_2.12fr_0.7fr_0.82fr_0.62fr_0.58fr_0.38fr] items-start gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198]">
+            <div className="grid grid-cols-[minmax(0,2.45fr)_0.62fr_0.62fr_0.85fr_0.62fr_0.62fr_0.46fr] items-start gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198]">
               <span>Cliente</span>
-              <span>Endereço</span>
               <span>Cadastro</span>
               <span>Ativação</span>
+              <span>Plano</span>
               <span className="text-center">Valor</span>
               <span className="text-center">Status</span>
               <span className="text-center">Ação</span>
@@ -1148,13 +1081,14 @@ export default function ClientesPage() {
                 return (
                   <div
                     key={
-                      cliente.business_id || `${getClienteNome(cliente)}-${email}`
+                      cliente.business_id ||
+                      `${getRazaoSocial(cliente)}-${email}`
                     }
-                    className="grid grid-cols-[1.28fr_2.12fr_0.7fr_0.82fr_0.62fr_0.58fr_0.38fr] items-start gap-4 px-5 py-5 text-sm leading-6 text-neutral-700"
+                    className="grid grid-cols-[minmax(0,2.45fr)_0.62fr_0.62fr_0.85fr_0.62fr_0.62fr_0.46fr] items-start gap-4 px-5 py-5 text-sm leading-6 text-neutral-700"
                   >
-                    <div className="space-y-0.5">
+                    <div className="min-w-0">
                       <p className="text-sm text-[#002198]">
-                        {cliente.documento_cliente || "Documento não informado"}
+                        {getClienteDocumento(cliente)}
                       </p>
 
                       <p className="text-sm text-black">
@@ -1165,46 +1099,32 @@ export default function ClientesPage() {
                         {getNomeCliente(cliente)}
                       </p>
 
-                      <p className="pt-1 text-sm leading-5 text-neutral-700">
-                        {email || "E-mail não informado"}
-                      </p>
-
-                      <p className="text-sm leading-5 text-neutral-700">
-                        {whatsapp || "WhatsApp não informado"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm leading-6 text-neutral-700">
+                      <p className="mt-1 text-sm leading-6 text-neutral-700">
                         {getEnderecoOrdenado(cliente)}
                       </p>
                     </div>
 
-                    <div className="space-y-0.5">
-                      <p className="text-sm text-neutral-700">Trial</p>
-
+                    <div>
                       <p className="text-sm text-neutral-700">
                         {formatDate(cliente.cliente_criado_em)}
                       </p>
                     </div>
 
-                    <div className="space-y-0.5">
-                      <p className="text-sm text-neutral-700">
-                        {getPlanoLabel(cliente)}
-                      </p>
-
+                    <div>
                       <p className="text-sm text-neutral-700">
                         {formatDate(cliente.data_ativacao)}
                       </p>
                     </div>
 
-                    <div className="space-y-0.5 text-center">
+                    <div>
+                      <p className="text-sm text-neutral-700">
+                        {cliente.plano_label || "—"}
+                      </p>
+                    </div>
+
+                    <div className="text-center">
                       <p className="text-sm text-neutral-700">
                         {formatMoney(cliente.assinatura_valor)}
-                      </p>
-
-                      <p className="text-sm text-neutral-700">
-                        {getFormaPagamentoLabel(cliente)}
                       </p>
                     </div>
 
