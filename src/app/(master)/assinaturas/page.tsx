@@ -1123,7 +1123,7 @@ export default function TorreAssinaturasPage() {
               <span>Plano</span>
               <span>Status</span>
               <span>Valor</span>
-              <span>Pagto</span>
+              <span>Cobrança</span>
               <span>Venc</span>
               <span className="text-right">Ação</span>
             </div>
