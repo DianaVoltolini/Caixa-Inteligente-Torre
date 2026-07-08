@@ -68,7 +68,7 @@ type MasterCliente = {
 
   plano?: string | null
   plano_label?: string | null
-  assinatura_valor?: number | null
+  assinatura_valor?: number | string | null
 
   trial_started_at?: string | null
   trial_ends_at?: string | null
@@ -420,6 +420,32 @@ function getEnderecoOrdenado(cliente: MasterCliente) {
   return cliente.endereco_completo || "Endereço não informado"
 }
 
+function getFormaPagamento(cliente: MasterCliente) {
+  return (
+    cliente.forma_pagamento_label ||
+    cliente.forma_pagamento ||
+    "Pagamento não informado"
+  )
+}
+
+function getStatusTone(cliente: MasterCliente) {
+  const status = cliente.assinatura_status_code
+
+  if (status === "assinante_ativo" || status === "trial_ativo") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  }
+
+  if (status === "assinante_bloqueado" || status === "trial_congelado") {
+    return "border-amber-200 bg-amber-50 text-amber-800"
+  }
+
+  if (status === "assinante_encerrado" || status === "trial_encerrado") {
+    return "border-rose-200 bg-rose-50 text-rose-800"
+  }
+
+  return "border-[#dfe7f7] bg-[#f8fbff] text-neutral-700"
+}
+
 function SummaryCard({
   label,
   value,
@@ -471,6 +497,23 @@ function SummaryCard({
         {value}
       </p>
     </button>
+  )
+}
+
+function InfoLine({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#002198]">
+        {label}
+      </span>
+      <span className="text-sm leading-6 text-neutral-700">{value}</span>
+    </div>
   )
 }
 
@@ -625,6 +668,7 @@ export default function ClientesPage() {
         getEnderecoOrdenado(cliente),
         cliente.plano_label,
         cliente.assinatura_valor,
+        cliente.forma_pagamento_label,
         cliente.assinatura_status_label,
         cliente.business_id,
       ].join(" "))
@@ -1060,81 +1104,48 @@ export default function ClientesPage() {
             </p>
           </Card>
         ) : (
-          <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="grid grid-cols-[minmax(0,2.45fr)_0.62fr_0.62fr_0.85fr_0.62fr_0.62fr_0.46fr] items-start gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198]">
-              <span>Cliente</span>
-              <span>Cadastro</span>
-              <span>Ativação</span>
-              <span>Plano</span>
-              <span className="text-center">Valor</span>
-              <span className="text-center">Status</span>
-              <span className="text-center">Ação</span>
-            </div>
+          <div className="space-y-4">
+            {filteredClientes.map((cliente) => {
+              const email = getEmail(cliente)
+              const whatsapp = getWhatsapp(cliente)
+              const whatsappLink = buildWhatsAppLink(whatsapp)
+              const mailTo = buildMailTo(email)
 
-            <div className="divide-y divide-[#dfe7f7]">
-              {filteredClientes.map((cliente) => {
-                const email = getEmail(cliente)
-                const whatsapp = getWhatsapp(cliente)
-                const whatsappLink = buildWhatsAppLink(whatsapp)
-                const mailTo = buildMailTo(email)
-
-                return (
-                  <div
-                    key={
-                      cliente.business_id ||
-                      `${getRazaoSocial(cliente)}-${email}`
-                    }
-                    className="grid grid-cols-[minmax(0,2.45fr)_0.62fr_0.62fr_0.85fr_0.62fr_0.62fr_0.46fr] items-start gap-4 px-5 py-5 text-sm leading-6 text-neutral-700"
-                  >
+              return (
+                <Card
+                  key={
+                    cliente.business_id ||
+                    `${getRazaoSocial(cliente)}-${email}`
+                  }
+                  className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]"
+                >
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
-                      <p className="text-sm text-[#002198]">
-                        {getClienteDocumento(cliente)}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-lg font-bold text-black">
+                          {getRazaoSocial(cliente)}
+                        </h2>
+
+                        <span
+                          className={[
+                            "rounded-full border px-3 py-1 text-xs font-semibold",
+                            getStatusTone(cliente),
+                          ].join(" ")}
+                        >
+                          {cliente.assinatura_status_label || "—"}
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-sm text-[#002198]">
+                        CPF/CNPJ: {getClienteDocumento(cliente)}
                       </p>
 
-                      <p className="text-sm text-black">
-                        {getRazaoSocial(cliente)}
-                      </p>
-
-                      <p className="text-sm text-neutral-700">
-                        {getNomeCliente(cliente)}
-                      </p>
-
-                      <p className="mt-1 text-sm leading-6 text-neutral-700">
-                        {getEnderecoOrdenado(cliente)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-neutral-700">
-                        {formatDate(cliente.cliente_criado_em)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-neutral-700">
-                        {formatDate(cliente.data_ativacao)}
+                      <p className="mt-1 text-sm text-neutral-700">
+                        Nome: {getNomeCliente(cliente)}
                       </p>
                     </div>
 
-                    <div>
-                      <p className="text-sm text-neutral-700">
-                        {cliente.plano_label || "—"}
-                      </p>
-                    </div>
-
-                    <div className="text-center">
-                      <p className="text-sm text-neutral-700">
-                        {formatMoney(cliente.assinatura_valor)}
-                      </p>
-                    </div>
-
-                    <div className="text-center">
-                      <p className="text-sm text-neutral-700">
-                        {cliente.assinatura_status_label || "—"}
-                      </p>
-                    </div>
-
-                    <div className="flex justify-center gap-2">
+                    <div className="flex shrink-0 gap-2">
                       {whatsappLink ? (
                         <a
                           href={whatsappLink}
@@ -1142,14 +1153,14 @@ export default function ClientesPage() {
                           rel="noreferrer"
                           title="Abrir WhatsApp"
                           aria-label="Abrir WhatsApp"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
                         >
                           <MessageCircle className="h-4 w-4" />
                         </a>
                       ) : (
                         <span
                           title="WhatsApp não informado"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
                         >
                           <MessageCircle className="h-4 w-4" />
                         </span>
@@ -1160,23 +1171,91 @@ export default function ClientesPage() {
                           href={mailTo}
                           title="Enviar e-mail"
                           aria-label="Enviar e-mail"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
                         >
                           <Mail className="h-4 w-4" />
                         </a>
                       ) : (
                         <span
                           title="E-mail não informado"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
                         >
                           <Mail className="h-4 w-4" />
                         </span>
                       )}
                     </div>
                   </div>
-                )
-              })}
-            </div>
+
+                  <div className="mt-5 grid gap-4 border-t border-[#eef3ff] pt-5 xl:grid-cols-[1.15fr_1.45fr_1.2fr]">
+                    <div className="rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-4">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#002198]">
+                        Contato
+                      </p>
+
+                      <div className="mt-3 space-y-3">
+                        <InfoLine
+                          label="E-mail"
+                          value={email || "E-mail não informado"}
+                        />
+
+                        <InfoLine
+                          label="WhatsApp"
+                          value={whatsapp || "WhatsApp não informado"}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-4">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#002198]">
+                        Endereço
+                      </p>
+
+                      <p className="mt-3 text-sm leading-7 text-neutral-700">
+                        {getEnderecoOrdenado(cliente)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-4">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#002198]">
+                        Assinatura
+                      </p>
+
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <InfoLine
+                          label="Cadastro"
+                          value={formatDate(cliente.cliente_criado_em)}
+                        />
+
+                        <InfoLine
+                          label="Ativação"
+                          value={formatDate(cliente.data_ativacao)}
+                        />
+
+                        <InfoLine
+                          label="Plano"
+                          value={cliente.plano_label || "—"}
+                        />
+
+                        <InfoLine
+                          label="Valor"
+                          value={formatMoney(cliente.assinatura_valor)}
+                        />
+
+                        <InfoLine
+                          label="Pagamento"
+                          value={getFormaPagamento(cliente)}
+                        />
+
+                        <InfoLine
+                          label="Status"
+                          value={cliente.assinatura_status_label || "—"}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>
