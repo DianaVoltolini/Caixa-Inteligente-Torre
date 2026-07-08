@@ -2,13 +2,14 @@
 
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { Mail, MessageCircle } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import PageContainer from "@/components/layout/PageContainer"
 import PageHeader from "@/components/layout/PageHeader"
 import { Card, Input } from "@/components/ui"
 
-type StatusFilter =
+type QuickFilter =
   | "todos"
   | "com_email"
   | "com_whatsapp"
@@ -16,8 +17,29 @@ type StatusFilter =
   | "sem_responsavel"
   | "recentes"
 
+type StatusFilter =
+  | "todos"
+  | "trial_ativo"
+  | "trial_congelado"
+  | "trial_encerrado"
+  | "assinante_ativo"
+  | "assinante_bloqueado"
+  | "assinante_encerrado"
+
+type PlanoFilter = "todos" | "trial" | "plano_lucro_real"
+
+type PeriodoFiltro =
+  | "todos"
+  | "este_mes"
+  | "mes_passado"
+  | "mes"
+  | "personalizado"
+
 type MasterCliente = {
   business_id?: string | null
+  documento_cliente?: string | null
+  razao_social?: string | null
+  nome_cliente?: string | null
   negocio?: string | null
   name?: string | null
   nome_responsavel?: string | null
@@ -25,14 +47,29 @@ type MasterCliente = {
   whatsapp?: string | null
   cliente_criado_em?: string | null
 
+  endereco_rua?: string | null
+  endereco_numero?: string | null
+  endereco_complemento?: string | null
+  endereco_cep?: string | null
+  endereco_bairro?: string | null
+  endereco_municipio?: string | null
+  endereco_uf?: string | null
+  endereco_completo?: string | null
+
   assinatura_id?: string | null
   assinatura_status?: string | null
+  assinatura_status_code?: StatusFilter | null
+  assinatura_status_label?: string | null
   plano?: string | null
+  plano_label?: string | null
   assinatura_valor?: number | null
   trial_started_at?: string | null
   trial_ends_at?: string | null
+  trial_converted_at?: string | null
+  data_ativacao?: string | null
   proximo_vencimento?: string | null
   forma_pagamento?: string | null
+  forma_pagamento_label?: string | null
   assinatura_criada_em?: string | null
 
   total_lancamentos?: number | null
@@ -67,6 +104,20 @@ const defaultSummary = {
   recentes: 0,
 }
 
+const allStatusOptions: Array<{
+  value: StatusFilter
+  label: string
+  plano: "todos" | "trial" | "plano"
+}> = [
+  { value: "todos", label: "Todos", plano: "todos" },
+  { value: "trial_ativo", label: "Trial ativo", plano: "trial" },
+  { value: "trial_congelado", label: "Trial congelado", plano: "trial" },
+  { value: "trial_encerrado", label: "Trial encerrado", plano: "trial" },
+  { value: "assinante_ativo", label: "Ativo", plano: "plano" },
+  { value: "assinante_bloqueado", label: "Bloqueado", plano: "plano" },
+  { value: "assinante_encerrado", label: "Encerrado", plano: "plano" },
+]
+
 function normalizeText(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -86,12 +137,105 @@ function formatDate(value: string | null | undefined) {
   return `${day}/${month}/${year}`
 }
 
+function formatMoney(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—"
+
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value))
+}
+
+function formatarDataInputLocal(data: Date) {
+  const ano = data.getFullYear()
+  const mes = String(data.getMonth() + 1).padStart(2, "0")
+  const dia = String(data.getDate()).padStart(2, "0")
+
+  return `${ano}-${mes}-${dia}`
+}
+
+function formatarMesInputLocal(data: Date) {
+  const ano = data.getFullYear()
+  const mes = String(data.getMonth() + 1).padStart(2, "0")
+
+  return `${ano}-${mes}`
+}
+
+function getDatasMesAtual() {
+  const hoje = new Date()
+
+  return {
+    dataInicial: formatarDataInputLocal(
+      new Date(hoje.getFullYear(), hoje.getMonth(), 1),
+    ),
+    dataFinal: formatarDataInputLocal(
+      new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0),
+    ),
+  }
+}
+
+function getDatasMesPassado() {
+  const hoje = new Date()
+
+  return {
+    dataInicial: formatarDataInputLocal(
+      new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1),
+    ),
+    dataFinal: formatarDataInputLocal(
+      new Date(hoje.getFullYear(), hoje.getMonth(), 0),
+    ),
+  }
+}
+
+function getDatasDoMesSelecionado(valorMes: string) {
+  const [anoTexto, mesTexto] = valorMes.split("-")
+
+  const ano = Number(anoTexto)
+  const mesIndex = Number(mesTexto) - 1
+
+  return {
+    dataInicial: formatarDataInputLocal(new Date(ano, mesIndex, 1)),
+    dataFinal: formatarDataInputLocal(new Date(ano, mesIndex + 1, 0)),
+  }
+}
+
+function formatarMesAnoBR(valorMes: string) {
+  if (!valorMes) return "—"
+
+  const [ano, mes] = valorMes.split("-")
+
+  const nomesMeses = [
+    "janeiro",
+    "fevereiro",
+    "março",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+  ]
+
+  return `${nomesMeses[Number(mes) - 1]} de ${ano}`
+}
+
 function getClienteNome(cliente: MasterCliente) {
   return cliente.negocio || cliente.name || "Cliente sem nome"
 }
 
-function getResponsavel(cliente: MasterCliente) {
-  return cliente.nome_responsavel || "Responsável não informado"
+function getRazaoSocial(cliente: MasterCliente) {
+  return cliente.razao_social || getClienteNome(cliente)
+}
+
+function getNomeCliente(cliente: MasterCliente) {
+  return (
+    cliente.nome_cliente ||
+    cliente.nome_responsavel ||
+    getClienteNome(cliente)
+  )
 }
 
 function getEmail(cliente: MasterCliente) {
@@ -139,7 +283,36 @@ function isRecent(value: string | null | undefined) {
   return diffInDays <= 7
 }
 
-function matchesStatusFilter(cliente: MasterCliente, filter: StatusFilter) {
+function isDateInRange(
+  value: string | null | undefined,
+  dateFrom: string,
+  dateTo: string,
+) {
+  if (!dateFrom && !dateTo) return true
+  if (!value) return false
+
+  const cleanValue = String(value).substring(0, 10)
+
+  if (dateFrom && cleanValue < dateFrom) return false
+  if (dateTo && cleanValue > dateTo) return false
+
+  return true
+}
+
+function matchesDateFilter(
+  cliente: MasterCliente,
+  dateFrom: string,
+  dateTo: string,
+) {
+  if (!dateFrom && !dateTo) return true
+
+  return (
+    isDateInRange(cliente.cliente_criado_em, dateFrom, dateTo) ||
+    isDateInRange(cliente.data_ativacao, dateFrom, dateTo)
+  )
+}
+
+function matchesQuickFilter(cliente: MasterCliente, filter: QuickFilter) {
   const email = getEmail(cliente)
   const whatsapp = getWhatsapp(cliente)
   const responsavel = cliente.nome_responsavel?.trim() || ""
@@ -152,6 +325,87 @@ function matchesStatusFilter(cliente: MasterCliente, filter: StatusFilter) {
   if (filter === "recentes") return isRecent(cliente.cliente_criado_em)
 
   return true
+}
+
+function matchesStatusFilter(cliente: MasterCliente, filter: StatusFilter) {
+  if (filter === "todos") return true
+
+  return cliente.assinatura_status_code === filter
+}
+
+function matchesPlanoFilter(cliente: MasterCliente, filter: PlanoFilter) {
+  if (filter === "todos") return true
+
+  const plano = normalizeText(cliente.plano_label)
+
+  if (filter === "trial") {
+    return plano === "trial"
+  }
+
+  if (filter === "plano_lucro_real") {
+    return plano.includes("plano lucro real") || plano.includes("lucro real")
+  }
+
+  return true
+}
+
+function statusBelongsToPlano(status: StatusFilter, plano: PlanoFilter) {
+  if (status === "todos") return true
+  if (plano === "todos") return true
+
+  if (plano === "trial") {
+    return status.startsWith("trial_")
+  }
+
+  if (plano === "plano_lucro_real") {
+    return status.startsWith("assinante_")
+  }
+
+  return true
+}
+
+function getStatusOptions(plano: PlanoFilter) {
+  if (plano === "trial") {
+    return allStatusOptions.filter(
+      (option) => option.plano === "todos" || option.plano === "trial",
+    )
+  }
+
+  if (plano === "plano_lucro_real") {
+    return allStatusOptions.filter(
+      (option) => option.plano === "todos" || option.plano === "plano",
+    )
+  }
+
+  return allStatusOptions
+}
+
+function getEnderecoOrdenado(cliente: MasterCliente) {
+  const partes = [
+    cliente.endereco_rua,
+    cliente.endereco_numero ? `nº ${cliente.endereco_numero}` : null,
+    cliente.endereco_complemento,
+    cliente.endereco_cep ? `CEP ${cliente.endereco_cep}` : null,
+    cliente.endereco_bairro,
+    cliente.endereco_municipio,
+    cliente.endereco_uf,
+  ]
+    .map((parte) => String(parte ?? "").trim())
+    .filter(Boolean)
+
+  if (partes.length > 0) {
+    return partes.join(" · ")
+  }
+
+  return cliente.endereco_completo || "Endereço não informado"
+}
+
+function getPlanoLabel(cliente: MasterCliente) {
+  return cliente.plano_label || "—"
+}
+
+function getFormaPagamentoLabel(cliente: MasterCliente) {
+  return cliente.forma_pagamento_label || "Pagamento não informado"
 }
 
 function SummaryCard({
@@ -214,7 +468,27 @@ export default function ClientesPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [search, setSearch] = useState("")
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("todos")
+  const [planoFilter, setPlanoFilter] = useState<PlanoFilter>("todos")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos")
+
+  const [menuPeriodoAberto, setMenuPeriodoAberto] = useState(false)
+  const [periodoSelecionado, setPeriodoSelecionado] =
+    useState<PeriodoFiltro>("todos")
+  const [rascunhoPeriodo, setRascunhoPeriodo] =
+    useState<PeriodoFiltro>("todos")
+  const [rascunhoMes, setRascunhoMes] = useState("")
+  const [rascunhoDataInicial, setRascunhoDataInicial] = useState("")
+  const [rascunhoDataFinal, setRascunhoDataFinal] = useState("")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+
+  const menuPeriodoRef = useRef<HTMLDivElement | null>(null)
+
+  const statusOptions = useMemo(
+    () => getStatusOptions(planoFilter),
+    [planoFilter],
+  )
 
   const loadClientes = useCallback(async () => {
     setLoading(true)
@@ -252,6 +526,25 @@ export default function ClientesPage() {
     void loadClientes()
   }, [loadClientes])
 
+  useEffect(() => {
+    if (!menuPeriodoAberto) return
+
+    function handleClickFora(event: MouseEvent) {
+      if (
+        menuPeriodoRef.current &&
+        !menuPeriodoRef.current.contains(event.target as Node)
+      ) {
+        setMenuPeriodoAberto(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickFora)
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickFora)
+    }
+  }, [menuPeriodoAberto])
+
   const summary = useMemo(() => {
     return clientes.reduce(
       (acc, cliente) => {
@@ -273,25 +566,189 @@ export default function ClientesPage() {
     )
   }, [clientes])
 
+  const textoPeriodoBotao = useMemo(() => {
+    if (periodoSelecionado === "este_mes") return "Este mês"
+    if (periodoSelecionado === "mes_passado") return "Mês passado"
+    if (periodoSelecionado === "mes") return "Selecionar mês"
+    if (periodoSelecionado === "personalizado") return "Personalizado"
+
+    return "Tudo"
+  }, [periodoSelecionado])
+
+  const resumoFiltro = useMemo(() => {
+    if (periodoSelecionado === "todos") {
+      return "Filtro aplicado: tudo"
+    }
+
+    if (periodoSelecionado === "este_mes") {
+      return "Filtro aplicado: este mês"
+    }
+
+    if (periodoSelecionado === "mes_passado") {
+      return "Filtro aplicado: mês passado"
+    }
+
+    if (periodoSelecionado === "mes") {
+      return `Filtro aplicado: ${formatarMesAnoBR(rascunhoMes)}`
+    }
+
+    return `Filtro aplicado: ${formatDate(dateFrom)} até ${formatDate(dateTo)}`
+  }, [dateFrom, dateTo, periodoSelecionado, rascunhoMes])
+
   const filteredClientes = useMemo(() => {
     const cleanSearch = normalizeText(search)
 
     return clientes.filter((cliente) => {
-      const matchesFilter = matchesStatusFilter(cliente, statusFilter)
+      const matchesQuick = matchesQuickFilter(cliente, quickFilter)
+      const matchesPlano = matchesPlanoFilter(cliente, planoFilter)
+      const matchesStatus = matchesStatusFilter(cliente, statusFilter)
+      const matchesDate = matchesDateFilter(cliente, dateFrom, dateTo)
 
       const searchable = normalizeText([
+        cliente.documento_cliente,
+        getRazaoSocial(cliente),
+        getNomeCliente(cliente),
         getClienteNome(cliente),
-        getResponsavel(cliente),
+        cliente.nome_responsavel,
         getEmail(cliente),
         getWhatsapp(cliente),
+        getEnderecoOrdenado(cliente),
+        cliente.plano_label,
+        cliente.assinatura_valor,
+        cliente.assinatura_status_label,
         cliente.business_id,
       ].join(" "))
 
       const matchesSearch = !cleanSearch || searchable.includes(cleanSearch)
 
-      return matchesFilter && matchesSearch
+      return (
+        matchesQuick &&
+        matchesPlano &&
+        matchesStatus &&
+        matchesDate &&
+        matchesSearch
+      )
     })
-  }, [clientes, search, statusFilter])
+  }, [
+    clientes,
+    dateFrom,
+    dateTo,
+    planoFilter,
+    quickFilter,
+    search,
+    statusFilter,
+  ])
+
+  function handlePlanoChange(value: PlanoFilter) {
+    setPlanoFilter(value)
+
+    if (!statusBelongsToPlano(statusFilter, value)) {
+      setStatusFilter("todos")
+    }
+  }
+
+  function abrirMenuPeriodo() {
+    const mesAtual = formatarMesInputLocal(new Date())
+
+    setRascunhoPeriodo(periodoSelecionado)
+    setRascunhoMes(rascunhoMes || mesAtual)
+    setRascunhoDataInicial(dateFrom)
+    setRascunhoDataFinal(dateTo)
+
+    setMenuPeriodoAberto(true)
+  }
+
+  function aplicarTudo() {
+    setPeriodoSelecionado("todos")
+    setRascunhoPeriodo("todos")
+    setRascunhoMes("")
+    setRascunhoDataInicial("")
+    setRascunhoDataFinal("")
+    setDateFrom("")
+    setDateTo("")
+    setMenuPeriodoAberto(false)
+  }
+
+  function aplicarPeriodoRapido(tipoPeriodo: "este_mes" | "mes_passado") {
+    const datas =
+      tipoPeriodo === "este_mes" ? getDatasMesAtual() : getDatasMesPassado()
+
+    const hoje = new Date()
+    const mesReferencia =
+      tipoPeriodo === "este_mes"
+        ? formatarMesInputLocal(hoje)
+        : formatarMesInputLocal(
+            new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1),
+          )
+
+    setPeriodoSelecionado(tipoPeriodo)
+    setRascunhoPeriodo(tipoPeriodo)
+    setRascunhoMes(mesReferencia)
+    setRascunhoDataInicial(datas.dataInicial)
+    setRascunhoDataFinal(datas.dataFinal)
+    setDateFrom(datas.dataInicial)
+    setDateTo(datas.dataFinal)
+    setMenuPeriodoAberto(false)
+  }
+
+  function abrirSelecionarMes() {
+    const mesAtual = formatarMesInputLocal(new Date())
+
+    setRascunhoPeriodo("mes")
+    setRascunhoMes(rascunhoMes || mesAtual)
+  }
+
+  function aplicarMesSelecionado(valorMes: string) {
+    if (!valorMes) return
+
+    const datas = getDatasDoMesSelecionado(valorMes)
+
+    setPeriodoSelecionado("mes")
+    setRascunhoPeriodo("mes")
+    setRascunhoMes(valorMes)
+    setRascunhoDataInicial(datas.dataInicial)
+    setRascunhoDataFinal(datas.dataFinal)
+    setDateFrom(datas.dataInicial)
+    setDateTo(datas.dataFinal)
+  }
+
+  function abrirPeriodoPersonalizado() {
+    const datasMesAtual = getDatasMesAtual()
+
+    setRascunhoPeriodo("personalizado")
+    setRascunhoDataInicial(dateFrom || datasMesAtual.dataInicial)
+    setRascunhoDataFinal(dateTo || datasMesAtual.dataFinal)
+  }
+
+  function aplicarDataInicialPersonalizada(value: string) {
+    setRascunhoDataInicial(value)
+    setPeriodoSelecionado("personalizado")
+    setRascunhoPeriodo("personalizado")
+    setDateFrom(value)
+
+    if (rascunhoDataFinal) {
+      setDateTo(rascunhoDataFinal)
+    }
+  }
+
+  function aplicarDataFinalPersonalizada(value: string) {
+    setRascunhoDataFinal(value)
+    setPeriodoSelecionado("personalizado")
+    setRascunhoPeriodo("personalizado")
+    setDateTo(value)
+
+    if (rascunhoDataInicial) {
+      setDateFrom(rascunhoDataInicial)
+    }
+  }
+
+  function limparFiltros() {
+    setSearch("")
+    setQuickFilter("todos")
+    setPlanoFilter("todos")
+    setStatusFilter("todos")
+    aplicarTudo()
+  }
 
   return (
     <PageContainer>
@@ -299,103 +756,354 @@ export default function ClientesPage() {
         <PageHeader
           eyebrow="Torre de controle"
           title="Central de clientes"
-          subtitle="Base cadastral dos clientes do Caixa Inteligente. Use esta tela para localizar cliente, responsável, contato e identificação interna."
+          subtitle="Base cadastral dos clientes do Caixa Inteligente, com contato, endereço, plano, valor, ativação e status."
         />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <SummaryCard
             label="Clientes"
             value={summary.total}
-            active={statusFilter === "todos"}
-            onClick={() => setStatusFilter("todos")}
+            active={quickFilter === "todos"}
+            onClick={() => setQuickFilter("todos")}
           />
 
           <SummaryCard
             label="Com e-mail"
             value={summary.comEmail}
             tone="blue"
-            active={statusFilter === "com_email"}
-            onClick={() => setStatusFilter("com_email")}
+            active={quickFilter === "com_email"}
+            onClick={() => setQuickFilter("com_email")}
           />
 
           <SummaryCard
             label="Com WhatsApp"
             value={summary.comWhatsapp}
             tone="success"
-            active={statusFilter === "com_whatsapp"}
-            onClick={() => setStatusFilter("com_whatsapp")}
+            active={quickFilter === "com_whatsapp"}
+            onClick={() => setQuickFilter("com_whatsapp")}
           />
 
           <SummaryCard
             label="Sem contato"
             value={summary.semContato}
             tone={summary.semContato > 0 ? "danger" : "default"}
-            active={statusFilter === "sem_contato"}
-            onClick={() => setStatusFilter("sem_contato")}
+            active={quickFilter === "sem_contato"}
+            onClick={() => setQuickFilter("sem_contato")}
           />
 
           <SummaryCard
             label="Sem responsável"
             value={summary.semResponsavel}
             tone={summary.semResponsavel > 0 ? "warning" : "default"}
-            active={statusFilter === "sem_responsavel"}
-            onClick={() => setStatusFilter("sem_responsavel")}
+            active={quickFilter === "sem_responsavel"}
+            onClick={() => setQuickFilter("sem_responsavel")}
           />
 
           <SummaryCard
             label="Novos 7 dias"
             value={summary.recentes}
             tone="blue"
-            active={statusFilter === "recentes"}
-            onClick={() => setStatusFilter("recentes")}
+            active={quickFilter === "recentes"}
+            onClick={() => setQuickFilter("recentes")}
           />
         </div>
 
-        <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-6">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px_auto]">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-black">
-                Buscar cliente
-              </label>
+        <Card className="overflow-visible rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
+                Filtros
+              </p>
 
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Empresa, responsável, e-mail, WhatsApp ou ID interno"
-                className="h-11"
-              />
+              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_190px_220px_auto]">
+                <div>
+                  <label className="text-sm font-medium text-black">
+                    Buscar cliente
+                  </label>
+
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Cliente, documento, responsável, e-mail, WhatsApp, plano ou status"
+                    className="mt-2 h-11"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-black">
+                    Plano
+                  </label>
+
+                  <select
+                    value={planoFilter}
+                    onChange={(event) =>
+                      handlePlanoChange(event.target.value as PlanoFilter)
+                    }
+                    className="mt-2 h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="trial">Trial</option>
+                    <option value="plano_lucro_real">Plano Lucro Real</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-black">
+                    Status
+                  </label>
+
+                  <select
+                    value={statusFilter}
+                    onChange={(event) =>
+                      setStatusFilter(event.target.value as StatusFilter)
+                    }
+                    className="mt-2 h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={limparFiltros}
+                    className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-4">
+                <p className="text-sm font-semibold text-black">
+                  Os resultados atualizam automaticamente.
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-black">
-                Situação cadastral
-              </label>
+            <div className="w-full shrink-0 lg:w-[330px]">
+              <div className="rounded-[22px] border border-[#dfe7f7] bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                <div className="relative" ref={menuPeriodoRef}>
+                  <label className="text-xs font-bold uppercase tracking-[0.14em] text-[#002198]">
+                    Período
+                  </label>
 
-              <select
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as StatusFilter)
-                }
-                className="h-11 w-full rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm text-black outline-none transition focus:border-[#002198] focus:ring-2 focus:ring-[#002198]/10"
-              >
-                <option value="todos">Todos</option>
-                <option value="com_email">Com e-mail</option>
-                <option value="com_whatsapp">Com WhatsApp</option>
-                <option value="sem_contato">Sem contato</option>
-                <option value="sem_responsavel">Sem responsável</option>
-                <option value="recentes">Novos nos últimos 7 dias</option>
-              </select>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (menuPeriodoAberto) {
+                        setMenuPeriodoAberto(false)
+                        return
+                      }
 
-            <div className="flex flex-col gap-2 xl:items-end xl:justify-end">
-              <button
-                type="button"
-                onClick={() => void loadClientes()}
-                disabled={loading}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-4 text-sm font-semibold text-[#002198] transition hover:bg-[#eef3ff] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? "Atualizando..." : "Atualizar"}
-              </button>
+                      abrirMenuPeriodo()
+                    }}
+                    className={[
+                      "mt-2 flex h-10 w-full items-center justify-between rounded-2xl border px-3 text-sm font-semibold transition",
+                      menuPeriodoAberto
+                        ? "border-[#002198] bg-[#f8fbff] text-[#002198]"
+                        : "border-[#dfe7f7] bg-white text-black hover:bg-[#f8fbff]",
+                    ].join(" ")}
+                  >
+                    <span className="flex items-center gap-2 text-left">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
+                        📅
+                      </span>
+                      {textoPeriodoBotao}
+                    </span>
+
+                    <span className="text-[10px] text-[#002198]">
+                      {menuPeriodoAberto ? "▲" : "▼"}
+                    </span>
+                  </button>
+
+                  {menuPeriodoAberto ? (
+                    <div className="absolute right-0 z-20 mt-2 w-full rounded-[20px] border border-[#dfe7f7] bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={aplicarTudo}
+                          className={[
+                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
+                            periodoSelecionado === "todos"
+                              ? "bg-[#eef3ff] text-[#002198]"
+                              : "bg-white text-black hover:bg-[#f8fbff]",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2 text-left">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
+                              ✨
+                            </span>
+                            Tudo
+                          </span>
+
+                          <span className="w-5 text-right text-[#002198]">
+                            {periodoSelecionado === "todos" ? "✓" : ""}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => aplicarPeriodoRapido("este_mes")}
+                          className={[
+                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
+                            periodoSelecionado === "este_mes"
+                              ? "bg-[#eef3ff] text-[#002198]"
+                              : "bg-white text-black hover:bg-[#f8fbff]",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2 text-left">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
+                              📅
+                            </span>
+                            Este mês
+                          </span>
+
+                          <span className="w-5 text-right text-[#002198]">
+                            {periodoSelecionado === "este_mes" ? "✓" : ""}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => aplicarPeriodoRapido("mes_passado")}
+                          className={[
+                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
+                            periodoSelecionado === "mes_passado"
+                              ? "bg-[#eef3ff] text-[#002198]"
+                              : "bg-white text-black hover:bg-[#f8fbff]",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2 text-left">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
+                              🗓️
+                            </span>
+                            Mês passado
+                          </span>
+
+                          <span className="w-5 text-right text-[#002198]">
+                            {periodoSelecionado === "mes_passado" ? "✓" : ""}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={abrirSelecionarMes}
+                          className={[
+                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
+                            rascunhoPeriodo === "mes"
+                              ? "bg-[#eef3ff] text-[#002198]"
+                              : "bg-white text-black hover:bg-[#f8fbff]",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2 text-left">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
+                              📆
+                            </span>
+                            Selecionar mês
+                          </span>
+
+                          <span className="w-5 text-right text-[#002198]">
+                            {rascunhoPeriodo === "mes" ? "✓" : ""}
+                          </span>
+                        </button>
+
+                        {rascunhoPeriodo === "mes" ? (
+                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
+                            <input
+                              type="month"
+                              value={rascunhoMes}
+                              onChange={(event) =>
+                                aplicarMesSelecionado(event.target.value)
+                              }
+                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
+                            />
+                          </div>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={abrirPeriodoPersonalizado}
+                          className={[
+                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
+                            rascunhoPeriodo === "personalizado"
+                              ? "bg-[#eef3ff] text-[#002198]"
+                              : "bg-white text-black hover:bg-[#f8fbff]",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2 text-left">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
+                              🔎
+                            </span>
+                            Personalizado
+                          </span>
+
+                          <span className="w-5 text-right text-[#002198]">
+                            {rascunhoPeriodo === "personalizado" ? "✓" : ""}
+                          </span>
+                        </button>
+
+                        {rascunhoPeriodo === "personalizado" ? (
+                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
+                            <input
+                              type="date"
+                              value={rascunhoDataInicial}
+                              onChange={(event) =>
+                                aplicarDataInicialPersonalizada(
+                                  event.target.value,
+                                )
+                              }
+                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
+                            />
+
+                            <input
+                              type="date"
+                              value={rascunhoDataFinal}
+                              onChange={(event) =>
+                                aplicarDataFinalPersonalizada(
+                                  event.target.value,
+                                )
+                              }
+                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
+                            />
+                          </div>
+                        ) : null}
+
+                        <div className="my-1 border-t border-[#dfe7f7]" />
+
+                        <button
+                          type="button"
+                          onClick={() => setMenuPeriodoAberto(false)}
+                          className="flex h-9 w-full items-center gap-2 rounded-2xl px-3 text-left text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
+                        >
+                          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs text-[#002198]">
+                            ✕
+                          </span>
+                          Fechar
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] px-3 py-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#002198]">
+                    Filtro aplicado
+                  </p>
+
+                  <p className="mt-0.5 text-xs font-semibold text-black">
+                    {resumoFiltro}
+                  </p>
+
+                  <p className="mt-1 text-[11px] leading-4 text-neutral-500">
+                    Considera cadastro ou ativação dentro do período.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </Card>
@@ -411,36 +1119,27 @@ export default function ClientesPage() {
             <p className="text-base font-semibold text-black">
               Carregando clientes...
             </p>
-
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Estou organizando a base cadastral da Torre.
-            </p>
           </Card>
         ) : filteredClientes.length === 0 ? (
           <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <p className="text-base font-semibold text-black">
               Nenhum cliente encontrado.
             </p>
-
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Ajuste a busca ou os filtros para consultar a base.
-            </p>
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.15fr_1fr_0.9fr_0.9fr_0.9fr_0.8fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="grid grid-cols-[1.28fr_2.12fr_0.7fr_0.82fr_0.62fr_0.58fr_0.38fr] items-start gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198]">
               <span>Cliente</span>
-              <span>Responsável</span>
-              <span>Contato</span>
+              <span>Endereço</span>
               <span>Cadastro</span>
-              <span>ID interno</span>
-              <span className="text-right">Ação</span>
+              <span>Ativação</span>
+              <span className="text-center">Valor</span>
+              <span className="text-center">Status</span>
+              <span className="text-center">Ação</span>
             </div>
 
             <div className="divide-y divide-[#dfe7f7]">
               {filteredClientes.map((cliente) => {
-                const nome = getClienteNome(cliente)
-                const responsavel = getResponsavel(cliente)
                 const email = getEmail(cliente)
                 const whatsapp = getWhatsapp(cliente)
                 const whatsappLink = buildWhatsAppLink(whatsapp)
@@ -448,107 +1147,111 @@ export default function ClientesPage() {
 
                 return (
                   <div
-                    key={cliente.business_id || `${nome}-${email}`}
-                    className="grid gap-4 px-5 py-5 xl:grid-cols-[1.15fr_1fr_0.9fr_0.9fr_0.9fr_0.8fr] xl:items-start"
+                    key={
+                      cliente.business_id || `${getClienteNome(cliente)}-${email}`
+                    }
+                    className="grid grid-cols-[1.28fr_2.12fr_0.7fr_0.82fr_0.62fr_0.58fr_0.38fr] items-start gap-4 px-5 py-5 text-sm leading-6 text-neutral-700"
                   >
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Cliente
+                    <div className="space-y-0.5">
+                      <p className="text-sm text-[#002198]">
+                        {cliente.documento_cliente || "Documento não informado"}
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {nome}
+                      <p className="text-sm text-black">
+                        {getRazaoSocial(cliente)}
                       </p>
 
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Negócio cadastrado no app
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Responsável
+                      <p className="text-sm text-neutral-700">
+                        {getNomeCliente(cliente)}
                       </p>
 
-                      <p className="mt-1 text-sm text-neutral-700">
-                        {responsavel}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Contato
-                      </p>
-
-                      <p className="mt-1 break-all text-xs text-neutral-700">
+                      <p className="pt-1 text-sm leading-5 text-neutral-700">
                         {email || "E-mail não informado"}
                       </p>
 
-                      <p className="mt-1 text-xs text-neutral-600">
+                      <p className="text-sm leading-5 text-neutral-700">
                         {whatsapp || "WhatsApp não informado"}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Cadastro
+                      <p className="text-sm leading-6 text-neutral-700">
+                        {getEnderecoOrdenado(cliente)}
                       </p>
+                    </div>
 
-                      <p className="mt-1 text-sm text-neutral-700">
+                    <div className="space-y-0.5">
+                      <p className="text-sm text-neutral-700">Trial</p>
+
+                      <p className="text-sm text-neutral-700">
                         {formatDate(cliente.cliente_criado_em)}
                       </p>
                     </div>
 
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        ID interno
+                    <div className="space-y-0.5">
+                      <p className="text-sm text-neutral-700">
+                        {getPlanoLabel(cliente)}
                       </p>
 
-                      <p className="mt-1 break-all text-xs text-neutral-500">
-                        {cliente.business_id || "—"}
+                      <p className="text-sm text-neutral-700">
+                        {formatDate(cliente.data_ativacao)}
                       </p>
                     </div>
 
-                    <div className="xl:text-right">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Ação
+                    <div className="space-y-0.5 text-center">
+                      <p className="text-sm text-neutral-700">
+                        {formatMoney(cliente.assinatura_valor)}
                       </p>
 
-                      <div className="flex flex-col gap-2 xl:items-end">
-                        {whatsappLink ? (
-                          <a
-                            href={whatsappLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex w-full items-center justify-center rounded-2xl bg-[#002198] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#00166f] xl:w-auto"
-                          >
-                            WhatsApp
-                          </a>
-                        ) : null}
+                      <p className="text-sm text-neutral-700">
+                        {getFormaPagamentoLabel(cliente)}
+                      </p>
+                    </div>
 
-                        {mailTo ? (
-                          <a
-                            href={mailTo}
-                            className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
-                          >
-                            E-mail
-                          </a>
-                        ) : null}
+                    <div className="text-center">
+                      <p className="text-sm text-neutral-700">
+                        {cliente.assinatura_status_label || "—"}
+                      </p>
+                    </div>
 
+                    <div className="flex justify-center gap-2">
+                      {whatsappLink ? (
                         <a
-                          href="/assinaturas"
-                          className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                          href={whatsappLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir WhatsApp"
+                          aria-label="Abrir WhatsApp"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
                         >
-                          Ver assinatura
+                          <MessageCircle className="h-4 w-4" />
                         </a>
+                      ) : (
+                        <span
+                          title="WhatsApp não informado"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </span>
+                      )}
 
+                      {mailTo ? (
                         <a
-                          href="/cobrancas"
-                          className="inline-flex w-full items-center justify-center rounded-2xl border border-[#dfe7f7] bg-white px-3 py-2 text-xs font-semibold text-[#002198] transition hover:bg-[#eef3ff] xl:w-auto"
+                          href={mailTo}
+                          title="Enviar e-mail"
+                          aria-label="Enviar e-mail"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
                         >
-                          Ver cobranças
+                          <Mail className="h-4 w-4" />
                         </a>
-                      </div>
+                      ) : (
+                        <span
+                          title="E-mail não informado"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </span>
+                      )}
                     </div>
                   </div>
                 )
