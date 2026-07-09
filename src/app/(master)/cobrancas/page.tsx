@@ -113,10 +113,10 @@ const statusOptions: Array<{
   label: string
 }> = [
   { value: "todos", label: "Todos" },
-  { value: "aberto", label: "Aberto" },
-  { value: "pago", label: "Pago" },
-  { value: "vencido", label: "Vencido" },
-  { value: "cancelado", label: "Cancelado" },
+  { value: "aberto", label: "Aberta" },
+  { value: "pago", label: "Paga" },
+  { value: "vencido", label: "Vencida" },
+  { value: "cancelado", label: "Cancelada" },
   { value: "erro", label: "Com erro" },
 ]
 
@@ -171,11 +171,53 @@ function formatMoney(value: number | null | undefined) {
   }).format(getNumber(value))
 }
 
+function getBrazilDateKeyFromParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date)
+
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  if (!year || !month || !day) return null
+
+  return `${year}-${month}-${day}`
+}
+
+function getBrazilTodayKey() {
+  return getBrazilDateKeyFromParts(new Date())
+}
+
+function getBrazilDateKey(value: string | null | undefined) {
+  if (!value) return null
+
+  const cleanValue = String(value).trim()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) {
+    return cleanValue
+  }
+
+  const date = new Date(cleanValue)
+
+  if (!Number.isFinite(date.getTime())) {
+    return null
+  }
+
+  return getBrazilDateKeyFromParts(date)
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "—"
 
-  const cleanValue = String(value).substring(0, 10)
-  const [year, month, day] = cleanValue.split("-")
+  const dateKey = getBrazilDateKey(value)
+
+  if (!dateKey) return "—"
+
+  const [year, month, day] = dateKey.split("-")
 
   if (!year || !month || !day) return "—"
 
@@ -183,15 +225,12 @@ function formatDate(value: string | null | undefined) {
 }
 
 function isPastDate(value: string | null | undefined) {
-  if (!value) return false
+  const dateKey = getBrazilDateKey(value)
+  const todayKey = getBrazilTodayKey()
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  if (!dateKey || !todayKey) return false
 
-  const date = new Date(`${String(value).substring(0, 10)}T00:00:00`)
-  date.setHours(0, 0, 0, 0)
-
-  return Number.isFinite(date.getTime()) && date < today
+  return dateKey < todayKey
 }
 
 function formatarDataInputLocal(data: Date) {
@@ -366,7 +405,7 @@ function getTipoCode(row: CobrancaRow): TipoFilter {
 }
 
 function getStatusCode(row: CobrancaRow): StatusFilter {
-  const status = normalizeText(row.status_code || row.status || row.cobranca_status)
+  const status = normalizeText(row.status || row.cobranca_status || row.status_code)
   const syncStatus = normalizeText(row.sync_status)
 
   if (status === "error" || syncStatus === "error") return "erro"
@@ -390,12 +429,11 @@ function getStatusCode(row: CobrancaRow): StatusFilter {
     return "cancelado"
   }
 
-  if (
-    status === "overdue" ||
-    status === "vencido" ||
-    status === "vencida" ||
-    isPastDate(row.vencimento)
-  ) {
+  if (isPastDate(row.vencimento)) {
+    return "vencido"
+  }
+
+  if (!row.vencimento && (status === "overdue" || status === "vencido")) {
     return "vencido"
   }
 
@@ -405,13 +443,13 @@ function getStatusCode(row: CobrancaRow): StatusFilter {
 function getStatusLabel(row: CobrancaRow) {
   const code = getStatusCode(row)
 
-  if (code === "aberto") return "Aberto"
-  if (code === "pago") return "Pago"
-  if (code === "vencido") return "Vencido"
-  if (code === "cancelado") return "Cancelado"
+  if (code === "aberto") return "Aberta"
+  if (code === "pago") return "Paga"
+  if (code === "vencido") return "Vencida"
+  if (code === "cancelado") return "Cancelada"
   if (code === "erro") return "Com erro"
 
-  return "Aberto"
+  return "Aberta"
 }
 
 function getEmissaoCode(row: CobrancaRow) {
@@ -441,10 +479,12 @@ function isDateInRange(
   if (!dateFrom && !dateTo) return true
   if (!value) return false
 
-  const cleanValue = String(value).substring(0, 10)
+  const dateKey = getBrazilDateKey(value)
 
-  if (dateFrom && cleanValue < dateFrom) return false
-  if (dateTo && cleanValue > dateTo) return false
+  if (!dateKey) return false
+
+  if (dateFrom && dateKey < dateFrom) return false
+  if (dateTo && dateKey > dateTo) return false
 
   return true
 }
@@ -785,9 +825,9 @@ export default function CobrancasPage() {
           </SummaryCard>
 
           <SummaryCard title="Status" value={summary.aberto + summary.pago + summary.vencido}>
-            <SummaryLine label="Aberto" value={summary.aberto} />
-            <SummaryLine label="Pago" value={summary.pago} />
-            <SummaryLine label="Vencido" value={summary.vencido} />
+            <SummaryLine label="Aberta" value={summary.aberto} />
+            <SummaryLine label="Paga" value={summary.pago} />
+            <SummaryLine label="Vencida" value={summary.vencido} />
           </SummaryCard>
 
           <SummaryCard title="Pendências" value={summary.acaoManual}>
@@ -1052,12 +1092,14 @@ export default function CobrancasPage() {
                     </div>
 
                     <div>
-                      <p>{formatDate(item.vencimento)}</p>
+                      <p>Vence em: {formatDate(item.vencimento)}</p>
                       <p>Pago em: {formatDate(item.pago_em)}</p>
                     </div>
 
                     <div>
-                      <p>{getEmissaoLabel(item)}</p>
+                      <p className="text-neutral-500">
+                        {getEmissaoLabel(item)}
+                      </p>
                     </div>
 
                     <div>

@@ -5,6 +5,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireMasterApiUser } from "@/lib/auth/require-master-api"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 type CobrancaRow = {
   id: string
   business_id: string
@@ -166,16 +169,52 @@ function getTipoLabel(cicloTipo: string | null | undefined) {
   return cicloTipo || "—"
 }
 
+function getBrazilDateKeyFromParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date)
+
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  if (!year || !month || !day) return null
+
+  return `${year}-${month}-${day}`
+}
+
+function getBrazilTodayKey() {
+  return getBrazilDateKeyFromParts(new Date())
+}
+
+function getBrazilDateKey(value: string | null | undefined) {
+  if (!value) return null
+
+  const cleanValue = String(value).trim()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) {
+    return cleanValue
+  }
+
+  const date = new Date(cleanValue)
+
+  if (!Number.isFinite(date.getTime())) {
+    return null
+  }
+
+  return getBrazilDateKeyFromParts(date)
+}
+
 function isPastDate(value: string | null | undefined) {
-  if (!value) return false
+  const dateKey = getBrazilDateKey(value)
+  const todayKey = getBrazilTodayKey()
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  if (!dateKey || !todayKey) return false
 
-  const date = new Date(`${String(value).substring(0, 10)}T00:00:00`)
-  date.setHours(0, 0, 0, 0)
-
-  return Number.isFinite(date.getTime()) && date < today
+  return dateKey < todayKey
 }
 
 function getStatusLabel(cobranca: CobrancaRow) {
@@ -185,7 +224,7 @@ function getStatusLabel(cobranca: CobrancaRow) {
   if (status === "error" || syncStatus === "error") return "Com erro"
 
   if (status === "paid" || status === "paga" || status === "pago") {
-    return "Pago"
+    return "Paga"
   }
 
   if (
@@ -194,27 +233,26 @@ function getStatusLabel(cobranca: CobrancaRow) {
     status === "cancelado" ||
     status === "cancelled"
   ) {
-    return "Cancelado"
+    return "Cancelada"
   }
 
-  if (
-    status === "overdue" ||
-    status === "vencida" ||
-    status === "vencido" ||
-    isPastDate(cobranca.vencimento)
-  ) {
-    return "Vencido"
+  if (isPastDate(cobranca.vencimento)) {
+    return "Vencida"
   }
 
-  return "Aberto"
+  if (!cobranca.vencimento && (status === "overdue" || status === "vencida")) {
+    return "Vencida"
+  }
+
+  return "Aberta"
 }
 
 function getStatusCode(cobranca: CobrancaRow) {
   const label = getStatusLabel(cobranca)
 
-  if (label === "Pago") return "pago"
-  if (label === "Vencido") return "vencido"
-  if (label === "Cancelado") return "cancelado"
+  if (label === "Paga") return "pago"
+  if (label === "Vencida") return "vencido"
+  if (label === "Cancelada") return "cancelado"
   if (label === "Com erro") return "erro"
 
   return "aberto"
@@ -265,6 +303,7 @@ export async function GET(request: NextRequest) {
       .from("ci_cobrancas")
       .select("*")
       .order("created_at", { ascending: false })
+      .limit(500)
 
     if (cobrancasError) {
       throw cobrancasError
