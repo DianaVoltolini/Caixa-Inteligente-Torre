@@ -5,6 +5,9 @@ import { NextResponse } from "next/server"
 import { requireMasterApiUser } from "@/lib/auth/require-master-api"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 type BusinessRow = {
   id: string
   name?: string | null
@@ -33,22 +36,6 @@ type AssinaturaRow = {
   tolerancia_dias?: number | string | null
   created_at?: string | null
   updated_at?: string | null
-  [key: string]: unknown
-}
-
-type CobrancaRow = {
-  id: string
-  business_id: string
-  assinatura_id?: string | null
-  valor?: number | string | null
-  status?: string | null
-  ciclo_tipo?: string | null
-  vencimento?: string | null
-  pago_em?: string | null
-  created_at?: string | null
-  gerada_em?: string | null
-  bling_cobranca_id?: string | null
-  bling_link_pagamento?: string | null
   [key: string]: unknown
 }
 
@@ -319,12 +306,6 @@ function getEnderecoCompleto(business: BusinessRow) {
   )
 }
 
-function getNumber(value: unknown) {
-  const numberValue = Number(value ?? 0)
-
-  return Number.isFinite(numberValue) ? numberValue : 0
-}
-
 function getDateTime(value: string | null | undefined) {
   if (!value) return 0
 
@@ -354,10 +335,8 @@ function isAfterToday(date: Date | null) {
   return date >= today
 }
 
-function getLatestByBusiness<T extends { business_id: string; created_at?: string | null; updated_at?: string | null }>(
-  rows: T[],
-) {
-  const map = new Map<string, T>()
+function getLatestAssinaturaByBusiness(rows: AssinaturaRow[]) {
+  const map = new Map<string, AssinaturaRow>()
 
   rows.forEach((row) => {
     const current = map.get(row.business_id)
@@ -374,52 +353,6 @@ function getLatestByBusiness<T extends { business_id: string; created_at?: strin
       map.set(row.business_id, row)
     }
   })
-
-  return map
-}
-
-function getLatestChargeByBusiness(rows: CobrancaRow[]) {
-  const map = new Map<string, CobrancaRow>()
-
-  rows.forEach((row) => {
-    const current = map.get(row.business_id)
-
-    if (!current) {
-      map.set(row.business_id, row)
-      return
-    }
-
-    const currentDate = getDateTime(current.created_at || current.gerada_em || current.vencimento)
-    const newDate = getDateTime(row.created_at || row.gerada_em || row.vencimento)
-
-    if (newDate >= currentDate) {
-      map.set(row.business_id, row)
-    }
-  })
-
-  return map
-}
-
-function getFirstPaidChargeByBusiness(rows: CobrancaRow[]) {
-  const map = new Map<string, CobrancaRow>()
-
-  rows
-    .filter((row) => normalizeText(row.status) === "paid")
-    .forEach((row) => {
-      const current = map.get(row.business_id)
-
-      if (!current) {
-        map.set(row.business_id, row)
-        return
-      }
-
-      const currentDate = getDateTime(current.pago_em || current.created_at || current.gerada_em)
-      const newDate = getDateTime(row.pago_em || row.created_at || row.gerada_em)
-
-      if (newDate <= currentDate) {
-        map.set(row.business_id, row)
-      }
-    })
 
   return map
 }
@@ -454,35 +387,20 @@ function getFormaPagamento(assinatura: AssinaturaRow | undefined) {
   return raw
 }
 
-function getAssinaturaValor(
-  assinatura: AssinaturaRow | undefined,
-  ultimaCobranca: CobrancaRow | undefined,
-) {
-  const assinaturaValor = assinatura
-    ? pickFirstNumber(assinatura, ["valor", "price", "amount"])
-    : null
+function getAssinaturaValor(assinatura: AssinaturaRow | undefined) {
+  if (!assinatura) return null
 
-  if (assinaturaValor !== null) return assinaturaValor
-
-  if (ultimaCobranca?.valor !== undefined && ultimaCobranca?.valor !== null) {
-    return getNumber(ultimaCobranca.valor)
-  }
-
-  return null
+  return pickFirstNumber(assinatura, ["valor", "price", "amount"])
 }
 
-function getDataAtivacao(
-  assinatura: AssinaturaRow | undefined,
-  primeiraCobrancaPaga: CobrancaRow | undefined,
-) {
-  if (!assinatura) return primeiraCobrancaPaga?.pago_em || null
+function getDataAtivacao(assinatura: AssinaturaRow | undefined) {
+  if (!assinatura) return null
 
   return (
     assinatura.trial_converted_at ||
     assinatura.assinada_em ||
     assinatura.data_ativacao ||
     getStringValue(assinatura.activated_at) ||
-    primeiraCobrancaPaga?.pago_em ||
     null
   )
 }
@@ -553,45 +471,37 @@ export async function GET() {
         .from("ci_business")
         .select("*")
         .order("created_at", { ascending: false })
+        .limit(200)
 
     if (businessesError) {
       throw businessesError
     }
 
-    const { data: assinaturasData, error: assinaturasError } =
-      await supabaseAdmin
-        .from("ci_assinaturas")
-        .select("*")
-        .order("created_at", { ascending: false })
-
-    if (assinaturasError) {
-      throw assinaturasError
-    }
-
-    const { data: cobrancasData, error: cobrancasError } =
-      await supabaseAdmin
-        .from("ci_cobrancas")
-        .select("*")
-        .order("created_at", { ascending: false })
-
-    if (cobrancasError) {
-      throw cobrancasError
-    }
-
     const businesses = (businessesData ?? []) as BusinessRow[]
-    const assinaturas = (assinaturasData ?? []) as AssinaturaRow[]
-    const cobrancas = (cobrancasData ?? []) as CobrancaRow[]
+    const businessIds = businesses.map((business) => business.id).filter(Boolean)
 
-    const assinaturaMap = getLatestByBusiness(assinaturas)
-    const ultimaCobrancaMap = getLatestChargeByBusiness(cobrancas)
-    const primeiraCobrancaPagaMap = getFirstPaidChargeByBusiness(cobrancas)
+    let assinaturas: AssinaturaRow[] = []
+
+    if (businessIds.length > 0) {
+      const { data: assinaturasData, error: assinaturasError } =
+        await supabaseAdmin
+          .from("ci_assinaturas")
+          .select("*")
+          .in("business_id", businessIds)
+          .order("created_at", { ascending: false })
+          .limit(300)
+
+      if (assinaturasError) {
+        throw assinaturasError
+      }
+
+      assinaturas = (assinaturasData ?? []) as AssinaturaRow[]
+    }
+
+    const assinaturaMap = getLatestAssinaturaByBusiness(assinaturas)
 
     const clientes = businesses.map((business) => {
       const assinatura = assinaturaMap.get(business.id)
-      const ultimaCobranca = ultimaCobrancaMap.get(business.id)
-      const primeiraCobrancaPaga = primeiraCobrancaPagaMap.get(business.id)
-
-      const valor = getAssinaturaValor(assinatura, ultimaCobranca)
 
       return {
         business_id: business.id,
@@ -627,25 +537,18 @@ export async function GET() {
 
         plano: assinatura?.plano || null,
         plano_label: getPlanoLabel(assinatura),
-        assinatura_valor: valor,
+        assinatura_valor: getAssinaturaValor(assinatura),
 
         trial_started_at: assinatura?.trial_started_at || null,
         trial_ends_at: assinatura?.trial_ends_at || null,
         trial_converted_at: assinatura?.trial_converted_at || null,
-        data_ativacao: getDataAtivacao(assinatura, primeiraCobrancaPaga),
+        data_ativacao: getDataAtivacao(assinatura),
 
         proximo_vencimento: assinatura?.proximo_vencimento || null,
         dia_vencimento: assinatura?.dia_vencimento || null,
 
         forma_pagamento: getFormaPagamento(assinatura),
         forma_pagamento_label: getFormaPagamento(assinatura),
-
-        cobranca_id: ultimaCobranca?.id || null,
-        cobranca_status: ultimaCobranca?.status || null,
-        cobranca_valor: ultimaCobranca?.valor ?? null,
-        cobranca_vencimento: ultimaCobranca?.vencimento || null,
-        cobranca_bling_id: ultimaCobranca?.bling_cobranca_id || null,
-        cobranca_link_pagamento: ultimaCobranca?.bling_link_pagamento || null,
       }
     })
 
