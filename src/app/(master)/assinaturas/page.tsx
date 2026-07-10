@@ -61,6 +61,10 @@ type AssinaturaItem = {
   assinatura_status_detalhe?: string | null
   acao_necessaria?: boolean | null
 
+  status?: string | null
+  status_code?: string | null
+  status_label?: string | null
+
   plano?: string | null
   plano_label?: string | null
 
@@ -173,6 +177,10 @@ function getBrazilDateKeyFromParts(date: Date) {
   return `${year}-${month}-${day}`
 }
 
+function getBrazilTodayKey() {
+  return getBrazilDateKeyFromParts(new Date())
+}
+
 function getBrazilDateKey(value: string | null | undefined) {
   if (!value) return null
 
@@ -189,6 +197,23 @@ function getBrazilDateKey(value: string | null | undefined) {
   }
 
   return getBrazilDateKeyFromParts(date)
+}
+
+function addDaysToDateKey(dateKey: string | null, days: number) {
+  if (!dateKey) return null
+
+  const [year, month, day] = dateKey.split("-").map(Number)
+
+  if (!year || !month || !day) return null
+
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
+  date.setUTCDate(date.getUTCDate() + days)
+
+  const newYear = date.getUTCFullYear()
+  const newMonth = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const newDay = String(date.getUTCDate()).padStart(2, "0")
+
+  return `${newYear}-${newMonth}-${newDay}`
 }
 
 function formatDate(value: string | null | undefined) {
@@ -339,11 +364,19 @@ function buildMailTo(email: string) {
   return `mailto:${cleanEmail}`
 }
 
+function getRawStatus(item: AssinaturaItem) {
+  return normalizeText(
+    item.assinatura_status || item.status || item.status_code || "",
+  )
+}
+
 function getPlanoCode(item: AssinaturaItem): PlanoFilter {
-  const status = normalizeText(item.assinatura_status_code)
+  const explicitStatus = normalizeText(item.assinatura_status_code)
+  const rawStatus = getRawStatus(item)
   const plano = normalizeText(item.plano_label || item.plano)
 
-  if (status.startsWith("trial_")) return "trial"
+  if (explicitStatus.startsWith("trial_")) return "trial"
+  if (rawStatus === "trialing" || rawStatus === "trial") return "trial"
   if (plano === "trial") return "trial"
 
   return "plano_lucro_real"
@@ -355,17 +388,93 @@ function getPlanoLabel(item: AssinaturaItem) {
   return item.plano_label || item.plano || "Plano Lucro Real"
 }
 
+function getTrialStatusCode(item: AssinaturaItem) {
+  const todayKey = getBrazilTodayKey()
+  const trialEndsKey = getBrazilDateKey(item.trial_ends_at)
+  const toleranciaDias = Number(item.tolerancia_dias ?? 3)
+  const toleranceLimitKey = addDaysToDateKey(trialEndsKey, toleranciaDias)
+
+  if (!todayKey || !trialEndsKey) return "trial_ativo"
+
+  if (todayKey <= trialEndsKey) return "trial_ativo"
+
+  if (toleranceLimitKey && todayKey <= toleranceLimitKey) {
+    return "trial_congelado"
+  }
+
+  return "trial_encerrado"
+}
+
+function getAssinanteStatusCodeByDates(item: AssinaturaItem) {
+  const todayKey = getBrazilTodayKey()
+  const vencimentoKey = getBrazilDateKey(item.proximo_vencimento)
+  const toleranciaDias = Number(item.tolerancia_dias ?? 3)
+  const limiteBloqueioKey = addDaysToDateKey(vencimentoKey, toleranciaDias)
+
+  if (!todayKey || !vencimentoKey) {
+    return "assinante_ativo"
+  }
+
+  if (todayKey <= vencimentoKey) {
+    return "assinante_ativo"
+  }
+
+  if (limiteBloqueioKey && todayKey <= limiteBloqueioKey) {
+    return "assinante_ativo"
+  }
+
+  return "assinante_bloqueado"
+}
+
 function getStatusCode(item: AssinaturaItem): StatusFilter | "sem_assinatura" {
-  const status = normalizeText(item.assinatura_status_code)
+  const explicitCode = normalizeText(
+    item.assinatura_status_code || item.status_code,
+  )
 
-  if (status === "trial_ativo") return "trial_ativo"
-  if (status === "trial_congelado") return "trial_congelado"
-  if (status === "trial_encerrado") return "trial_encerrado"
-  if (status === "assinante_ativo") return "assinante_ativo"
-  if (status === "assinante_bloqueado") return "assinante_bloqueado"
-  if (status === "assinante_encerrado") return "assinante_encerrado"
+  if (explicitCode === "trial_ativo") return "trial_ativo"
+  if (explicitCode === "trial_congelado") return "trial_congelado"
+  if (explicitCode === "trial_encerrado") return "trial_encerrado"
+  if (explicitCode === "assinante_ativo") return "assinante_ativo"
+  if (explicitCode === "assinante_bloqueado") {
+    const byDates = getAssinanteStatusCodeByDates(item)
 
-  const label = normalizeText(item.assinatura_status_label)
+    if (byDates === "assinante_ativo") return "assinante_ativo"
+
+    return "assinante_bloqueado"
+  }
+  if (explicitCode === "assinante_encerrado") return "assinante_encerrado"
+
+  const rawStatus = getRawStatus(item)
+
+  if (rawStatus === "trialing" || rawStatus === "trial") {
+    return getTrialStatusCode(item)
+  }
+
+  if (rawStatus === "active") {
+    return getAssinanteStatusCodeByDates(item)
+  }
+
+  if (
+    rawStatus === "awaiting_payment" ||
+    rawStatus === "grace_period" ||
+    rawStatus === "overdue"
+  ) {
+    return getAssinanteStatusCodeByDates(item)
+  }
+
+  if (rawStatus === "blocked") {
+    const byDates = getAssinanteStatusCodeByDates(item)
+
+    if (byDates === "assinante_ativo") return "assinante_ativo"
+
+    return "assinante_bloqueado"
+  }
+
+  if (rawStatus === "canceled" || rawStatus === "cancelled") {
+    return "assinante_encerrado"
+  }
+
+  const label = normalizeText(item.assinatura_status_label || item.status_label)
 
   if (label.includes("trial") && label.includes("ativo")) {
     return "trial_ativo"
@@ -380,8 +489,18 @@ function getStatusCode(item: AssinaturaItem): StatusFilter | "sem_assinatura" {
   }
 
   if (label === "ativo") return "assinante_ativo"
-  if (label === "bloqueado") return "assinante_bloqueado"
+  if (label === "bloqueado") {
+    const byDates = getAssinanteStatusCodeByDates(item)
+
+    if (byDates === "assinante_ativo") return "assinante_ativo"
+
+    return "assinante_bloqueado"
+  }
   if (label === "encerrado") return "assinante_encerrado"
+
+  if (getPlanoCode(item) === "plano_lucro_real") {
+    return getAssinanteStatusCodeByDates(item)
+  }
 
   return "sem_assinatura"
 }
@@ -396,7 +515,7 @@ function getStatusLabel(item: AssinaturaItem) {
   if (status === "assinante_bloqueado") return "Bloqueado"
   if (status === "assinante_encerrado") return "Encerrado"
 
-  return item.assinatura_status_label || "Sem assinatura"
+  return "Sem assinatura"
 }
 
 function getStatusTone(item: AssinaturaItem) {
@@ -502,6 +621,45 @@ function getStatusOptions(plano: PlanoFilter) {
   }
 
   return statusOptionsBase
+}
+
+function getAcaoNecessaria(item: AssinaturaItem) {
+  const status = getStatusCode(item)
+  const rawStatus = getRawStatus(item)
+  const todayKey = getBrazilTodayKey()
+  const vencimentoKey = getBrazilDateKey(item.proximo_vencimento)
+
+  if (status === "trial_congelado") return true
+  if (status === "trial_encerrado") return true
+  if (status === "assinante_bloqueado") return true
+  if (status === "assinante_encerrado") return false
+
+  if (
+    rawStatus === "awaiting_payment" ||
+    rawStatus === "grace_period" ||
+    rawStatus === "overdue"
+  ) {
+    return true
+  }
+
+  if (
+    status === "assinante_ativo" &&
+    todayKey &&
+    vencimentoKey &&
+    todayKey >= vencimentoKey
+  ) {
+    return true
+  }
+
+  return Boolean(item.acao_necessaria)
+}
+
+function getStatusDetalhe(item: AssinaturaItem) {
+  if (getAcaoNecessaria(item)) {
+    return "Ação necessária"
+  }
+
+  return null
 }
 
 function SummaryGroupCard({
@@ -650,7 +808,7 @@ export default function TorreAssinaturasPage() {
         getWhatsapp(item),
         getPlanoLabel(item),
         getStatusLabel(item),
-        item.assinatura_status_detalhe,
+        getStatusDetalhe(item),
         item.assinatura_valor,
         getFormaPagamento(item),
         item.dia_vencimento,
@@ -670,6 +828,7 @@ export default function TorreAssinaturasPage() {
       (acc, item) => {
         const planoCode = getPlanoCode(item)
         const statusCode = getStatusCode(item)
+        const acaoNecessaria = getAcaoNecessaria(item)
 
         acc.total += 1
 
@@ -687,11 +846,11 @@ export default function TorreAssinaturasPage() {
         if (statusCode === "assinante_bloqueado") acc.planosBloqueados += 1
         if (statusCode === "assinante_encerrado") acc.planosEncerrados += 1
 
-        if (item.acao_necessaria && planoCode === "trial") {
+        if (acaoNecessaria && planoCode === "trial") {
           acc.acaoTrial += 1
         }
 
-        if (item.acao_necessaria && planoCode !== "trial") {
+        if (acaoNecessaria && planoCode !== "trial") {
           acc.acaoPlanos += 1
         }
 
@@ -1151,9 +1310,7 @@ export default function TorreAssinaturasPage() {
                 const whatsappLink = buildWhatsAppLink(whatsapp)
                 const mailTo = buildMailTo(email)
                 const planoCode = getPlanoCode(item)
-                const statusDetalhe =
-                  item.assinatura_status_detalhe ||
-                  (item.acao_necessaria ? "Ação necessária" : null)
+                const statusDetalhe = getStatusDetalhe(item)
 
                 return (
                   <div
