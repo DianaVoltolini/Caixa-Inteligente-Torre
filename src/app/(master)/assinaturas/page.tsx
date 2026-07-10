@@ -3,23 +3,29 @@
 "use client"
 
 import { Mail, MessageCircle } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 
 import PageContainer from "@/components/layout/PageContainer"
 import PageHeader from "@/components/layout/PageHeader"
 import { Card, Input } from "@/components/ui"
 
+type PlanoFilter = "todos" | "trial" | "plano_lucro_real"
+
 type StatusFilter =
   | "todos"
-  | "atencao"
   | "trial_ativo"
   | "trial_congelado"
   | "trial_encerrado"
   | "assinante_ativo"
   | "assinante_bloqueado"
   | "assinante_encerrado"
-
-type PlanoFilter = "todos" | "trial" | "plano_lucro_real"
 
 type PeriodoFiltro =
   | "todos"
@@ -28,94 +34,67 @@ type PeriodoFiltro =
   | "mes"
   | "personalizado"
 
-type Summary = {
-  total: number
-  trial: number
-  planos: number
-  trialAtivo: number
-  trialCongelado: number
-  trialEncerrado: number
-  ativos: number
-  bloqueados: number
-  encerrados: number
-  atencao: number
-}
-
 type AssinaturaItem = {
-  id: string
-  business_id: string
-  documento_cliente: string | null
-  cliente: string
-  razao_social: string | null
-  nome_cliente: string | null
-  responsavel: string | null
-  email: string | null
-  whatsapp: string | null
-  endereco_cobranca: string | null
-  plano_tipo: "Trial" | "Plano"
-  plano_label: string
-  plano_valor: number | null
-  forma_pagamento: string | null
-  forma_pagamento_label: string | null
-  dia_vencimento: number | null
-  dia_vencimento_label: string | null
-  data_cadastro: string | null
-  data_ativacao: string | null
-  data_referencia: string | null
-  data_referencia_label: "Cadastro" | "Ativação"
-  status_code:
-    | "trial_ativo"
-    | "trial_congelado"
-    | "trial_encerrado"
-    | "assinante_ativo"
-    | "assinante_bloqueado"
-    | "assinante_encerrado"
-  status_label: string
-  status_raw: string | null
-  trial_started_at: string | null
-  trial_ends_at: string | null
-  tolerancia_dias: number
-  proximo_vencimento: string | null
-  cobranca_id: string | null
-  cobranca_status: string | null
-  cobranca_label: string
-  cobranca_emitida: boolean
-  cobranca_emissao_label: "Emitida" | "Pendente de Emissão"
-  cobranca_valor: number | null
-  cobranca_vencimento: string | null
-  cobranca_link: string | null
-  cobranca_bling_id: string | null
-  cobranca_documento: string | null
-  precisa_atencao: boolean
+  id?: string | null
+  business_id?: string | null
+
+  documento_cliente?: string | null
+  cpf_cnpj?: string | null
+  documento?: string | null
+
+  razao_social?: string | null
+  nome_cliente?: string | null
+  cliente_nome?: string | null
+  cliente?: string | null
+  business_name?: string | null
+  name?: string | null
+  nome_responsavel?: string | null
+  email_financeiro?: string | null
+  whatsapp?: string | null
+
+  cliente_criado_em?: string | null
+
+  assinatura_id?: string | null
+  assinatura_status?: string | null
+  assinatura_status_code?: string | null
+  assinatura_status_label?: string | null
+  assinatura_status_detalhe?: string | null
+  acao_necessaria?: boolean | null
+
+  plano?: string | null
+  plano_label?: string | null
+
+  assinatura_valor?: number | string | null
+
+  trial_started_at?: string | null
+  trial_ends_at?: string | null
+  trial_converted_at?: string | null
+  data_ativacao?: string | null
+
+  proximo_vencimento?: string | null
+  dia_vencimento?: number | string | null
+  tolerancia_dias?: number | string | null
+
+  forma_pagamento?: string | null
+  forma_pagamento_label?: string | null
 }
 
-type ApiResponse = {
-  ok: boolean
+type ApiPayload = {
+  ok?: boolean
+  success?: boolean
   message?: string
-  summary?: Partial<Summary>
-  data?: AssinaturaItem[]
+  error?: string
+  data?: unknown
+  items?: unknown
+  assinaturas?: unknown
 }
 
-const emptySummary: Summary = {
-  total: 0,
-  trial: 0,
-  planos: 0,
-  trialAtivo: 0,
-  trialCongelado: 0,
-  trialEncerrado: 0,
-  ativos: 0,
-  bloqueados: 0,
-  encerrados: 0,
-  atencao: 0,
-}
-
-const allStatusOptions: Array<{
+const statusOptionsBase: Array<{
   value: StatusFilter
   label: string
   plano: "todos" | "trial" | "plano"
 }> = [
   { value: "todos", label: "Todos", plano: "todos" },
-  { value: "atencao", label: "Ação necessária", plano: "todos" },
   { value: "trial_ativo", label: "Trial ativo", plano: "trial" },
   { value: "trial_congelado", label: "Trial congelado", plano: "trial" },
   { value: "trial_encerrado", label: "Trial encerrado", plano: "trial" },
@@ -124,25 +103,104 @@ const allStatusOptions: Array<{
   { value: "assinante_encerrado", label: "Encerrado", plano: "plano" },
 ]
 
-function numberOrZero(value: unknown) {
-  const number = Number(value)
-
-  return Number.isFinite(number) ? number : 0
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
 }
 
-function normalizeSummary(summary?: Partial<Summary>): Summary {
-  return {
-    total: numberOrZero(summary?.total),
-    trial: numberOrZero(summary?.trial),
-    planos: numberOrZero(summary?.planos),
-    trialAtivo: numberOrZero(summary?.trialAtivo),
-    trialCongelado: numberOrZero(summary?.trialCongelado),
-    trialEncerrado: numberOrZero(summary?.trialEncerrado),
-    ativos: numberOrZero(summary?.ativos),
-    bloqueados: numberOrZero(summary?.bloqueados),
-    encerrados: numberOrZero(summary?.encerrados),
-    atencao: numberOrZero(summary?.atencao),
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>
   }
+
+  return {}
+}
+
+function extractArray(payload: ApiPayload | null): AssinaturaItem[] {
+  if (!payload) return []
+
+  if (Array.isArray(payload.data)) return payload.data as AssinaturaItem[]
+  if (Array.isArray(payload.items)) return payload.items as AssinaturaItem[]
+  if (Array.isArray(payload.assinaturas)) {
+    return payload.assinaturas as AssinaturaItem[]
+  }
+
+  const data = asRecord(payload.data)
+
+  if (Array.isArray(data.items)) return data.items as AssinaturaItem[]
+  if (Array.isArray(data.assinaturas)) {
+    return data.assinaturas as AssinaturaItem[]
+  }
+  if (Array.isArray(data.data)) return data.data as AssinaturaItem[]
+
+  return []
+}
+
+function getNumber(value: unknown) {
+  const numberValue = Number(value ?? 0)
+
+  return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+function formatMoney(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return "—"
+
+  const numberValue = getNumber(value)
+
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(numberValue)
+}
+
+function getBrazilDateKeyFromParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date)
+
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  if (!year || !month || !day) return null
+
+  return `${year}-${month}-${day}`
+}
+
+function getBrazilDateKey(value: string | null | undefined) {
+  if (!value) return null
+
+  const cleanValue = String(value).trim()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) {
+    return cleanValue
+  }
+
+  const date = new Date(cleanValue)
+
+  if (!Number.isFinite(date.getTime())) {
+    return null
+  }
+
+  return getBrazilDateKeyFromParts(date)
+}
+
+function formatDate(value: string | null | undefined) {
+  const dateKey = getBrazilDateKey(value)
+
+  if (!dateKey) return "—"
+
+  const [year, month, day] = dateKey.split("-")
+
+  if (!year || !month || !day) return "—"
+
+  return `${day}/${month}/${year}`
 }
 
 function formatarDataInputLocal(data: Date) {
@@ -198,17 +256,6 @@ function getDatasDoMesSelecionado(valorMes: string) {
   }
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "—"
-
-  const cleanValue = String(value).substring(0, 10)
-  const [year, month, day] = cleanValue.split("-")
-
-  if (!year || !month || !day) return "—"
-
-  return `${day}/${month}/${year}`
-}
-
 function formatarMesAnoBR(valorMes: string) {
   if (!valorMes) return "—"
 
@@ -232,21 +279,50 @@ function formatarMesAnoBR(valorMes: string) {
   return `${nomesMeses[Number(mes) - 1]} de ${ano}`
 }
 
-function formatMoney(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—"
-
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(value))
+function getClienteDocumento(item: AssinaturaItem) {
+  return (
+    item.documento_cliente ||
+    item.cpf_cnpj ||
+    item.documento ||
+    "Documento não informado"
+  )
 }
 
-function onlyNumbers(value: string | null) {
-  return String(value ?? "").replace(/\D/g, "")
+function getRazaoSocial(item: AssinaturaItem) {
+  return (
+    item.razao_social ||
+    item.cliente_nome ||
+    item.cliente ||
+    item.business_name ||
+    item.name ||
+    "Cliente sem razão social"
+  )
 }
 
-function buildWhatsAppLink(whatsapp: string | null) {
-  const digits = onlyNumbers(whatsapp)
+function getNomeCliente(item: AssinaturaItem) {
+  return (
+    item.nome_cliente ||
+    item.nome_responsavel ||
+    item.cliente_nome ||
+    item.cliente ||
+    "Nome não informado"
+  )
+}
+
+function getEmail(item: AssinaturaItem) {
+  return item.email_financeiro || ""
+}
+
+function getWhatsapp(item: AssinaturaItem) {
+  return item.whatsapp || ""
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "")
+}
+
+function buildWhatsAppLink(whatsapp: string) {
+  const digits = onlyDigits(whatsapp)
 
   if (!digits) return null
 
@@ -255,9 +331,7 @@ function buildWhatsAppLink(whatsapp: string | null) {
   return `https://wa.me/${normalized}`
 }
 
-function buildMailLink(email: string | null) {
-  if (!email) return null
-
+function buildMailTo(email: string) {
   const cleanEmail = email.trim()
 
   if (!cleanEmail) return null
@@ -265,22 +339,142 @@ function buildMailLink(email: string | null) {
   return `mailto:${cleanEmail}`
 }
 
-function getSafePlanoTipo(item: AssinaturaItem) {
-  if (item.plano_tipo === "Plano" || item.data_ativacao) return "Plano"
+function getPlanoCode(item: AssinaturaItem): PlanoFilter {
+  const status = normalizeText(item.assinatura_status_code)
+  const plano = normalizeText(item.plano_label || item.plano)
 
-  return "Trial"
+  if (status.startsWith("trial_")) return "trial"
+  if (plano === "trial") return "trial"
+
+  return "plano_lucro_real"
 }
 
-function getSafePlanoLabel(item: AssinaturaItem) {
-  const tipo = getSafePlanoTipo(item)
+function getPlanoLabel(item: AssinaturaItem) {
+  if (getPlanoCode(item) === "trial") return "Trial"
 
-  if (tipo === "Trial") return "Trial"
+  return item.plano_label || item.plano || "Plano Lucro Real"
+}
 
-  return item.plano_label || "Plano Lucro Real"
+function getStatusCode(item: AssinaturaItem): StatusFilter | "sem_assinatura" {
+  const status = normalizeText(item.assinatura_status_code)
+
+  if (status === "trial_ativo") return "trial_ativo"
+  if (status === "trial_congelado") return "trial_congelado"
+  if (status === "trial_encerrado") return "trial_encerrado"
+  if (status === "assinante_ativo") return "assinante_ativo"
+  if (status === "assinante_bloqueado") return "assinante_bloqueado"
+  if (status === "assinante_encerrado") return "assinante_encerrado"
+
+  const label = normalizeText(item.assinatura_status_label)
+
+  if (label.includes("trial") && label.includes("ativo")) {
+    return "trial_ativo"
+  }
+
+  if (label.includes("trial") && label.includes("congelado")) {
+    return "trial_congelado"
+  }
+
+  if (label.includes("trial") && label.includes("encerrado")) {
+    return "trial_encerrado"
+  }
+
+  if (label === "ativo") return "assinante_ativo"
+  if (label === "bloqueado") return "assinante_bloqueado"
+  if (label === "encerrado") return "assinante_encerrado"
+
+  return "sem_assinatura"
+}
+
+function getStatusLabel(item: AssinaturaItem) {
+  const status = getStatusCode(item)
+
+  if (status === "trial_ativo") return "Trial ativo"
+  if (status === "trial_congelado") return "Trial congelado"
+  if (status === "trial_encerrado") return "Trial encerrado"
+  if (status === "assinante_ativo") return "Ativo"
+  if (status === "assinante_bloqueado") return "Bloqueado"
+  if (status === "assinante_encerrado") return "Encerrado"
+
+  return item.assinatura_status_label || "Sem assinatura"
+}
+
+function getStatusTone(item: AssinaturaItem) {
+  const status = getStatusCode(item)
+
+  if (status === "trial_ativo" || status === "assinante_ativo") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  }
+
+  if (status === "trial_congelado" || status === "assinante_bloqueado") {
+    return "border-amber-200 bg-amber-50 text-amber-800"
+  }
+
+  if (status === "trial_encerrado" || status === "assinante_encerrado") {
+    return "border-rose-200 bg-rose-50 text-rose-800"
+  }
+
+  return "border-[#dfe7f7] bg-[#f8fbff] text-neutral-700"
+}
+
+function getFormaPagamento(item: AssinaturaItem) {
+  const value = item.forma_pagamento_label || item.forma_pagamento
+
+  if (!value) return "—"
+
+  const normalized = normalizeText(value)
+
+  if (normalized === "pix") return "Pix"
+  if (normalized === "boleto") return "Boleto"
+
+  return value
+}
+
+function getDiaVencimento(item: AssinaturaItem) {
+  if (!item.dia_vencimento) return "—"
+
+  return `Dia ${item.dia_vencimento}`
+}
+
+function getDataBasePeriodo(item: AssinaturaItem) {
+  const planoCode = getPlanoCode(item)
+
+  if (planoCode === "trial") {
+    return item.cliente_criado_em || item.trial_started_at || null
+  }
+
+  return item.data_ativacao || item.trial_converted_at || item.cliente_criado_em || null
+}
+
+function isDateInRange(
+  value: string | null | undefined,
+  dateFrom: string,
+  dateTo: string,
+) {
+  if (!dateFrom && !dateTo) return true
+
+  const dateKey = getBrazilDateKey(value)
+
+  if (!dateKey) return false
+
+  if (dateFrom && dateKey < dateFrom) return false
+  if (dateTo && dateKey > dateTo) return false
+
+  return true
+}
+
+function matchesPeriodo(
+  item: AssinaturaItem,
+  dateFrom: string,
+  dateTo: string,
+) {
+  if (!dateFrom && !dateTo) return true
+
+  return isDateInRange(getDataBasePeriodo(item), dateFrom, dateTo)
 }
 
 function statusBelongsToPlano(status: StatusFilter, plano: PlanoFilter) {
-  if (status === "todos" || status === "atencao") return true
+  if (status === "todos") return true
   if (plano === "todos") return true
 
   if (plano === "trial") {
@@ -296,111 +490,63 @@ function statusBelongsToPlano(status: StatusFilter, plano: PlanoFilter) {
 
 function getStatusOptions(plano: PlanoFilter) {
   if (plano === "trial") {
-    return allStatusOptions.filter(
+    return statusOptionsBase.filter(
       (option) => option.plano === "todos" || option.plano === "trial",
     )
   }
 
   if (plano === "plano_lucro_real") {
-    return allStatusOptions.filter(
+    return statusOptionsBase.filter(
       (option) => option.plano === "todos" || option.plano === "plano",
     )
   }
 
-  return allStatusOptions
+  return statusOptionsBase
 }
 
-function OverviewCard({
+function SummaryGroupCard({
   title,
   value,
-  tone = "default",
-  active = false,
-  onClick,
-  rows,
+  children,
 }: {
   title: string
   value: number
-  tone?: "default" | "danger" | "success" | "warning" | "blue" | "neutral"
-  active?: boolean
-  onClick: () => void
-  rows: Array<{
-    label: string
-    value: number
-    onClick?: () => void
-  }>
+  children: ReactNode
 }) {
-  const className =
-    tone === "danger"
-      ? "border border-rose-200 bg-rose-50"
-      : tone === "success"
-        ? "border border-emerald-200 bg-emerald-50"
-        : tone === "warning"
-          ? "border border-amber-200 bg-amber-50"
-          : tone === "blue"
-            ? "border border-[#cfd8ff] bg-[#eef3ff]"
-            : tone === "neutral"
-              ? "border border-neutral-200 bg-neutral-50"
-              : "border border-[#dfe7f7] bg-white"
-
-  const valueClass =
-    tone === "danger"
-      ? "text-rose-800"
-      : tone === "success"
-        ? "text-emerald-800"
-        : tone === "warning"
-          ? "text-amber-800"
-          : "text-black"
-
   return (
-    <Card
-      className={[
-        "rounded-[24px] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.035)]",
-        className,
-        active ? "ring-2 ring-[#002198] ring-offset-2" : "",
-      ].join(" ")}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex w-full items-center justify-between gap-4 text-left"
-      >
+    <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#002198]">
           {title}
         </p>
 
-        <p className={["text-3xl font-bold leading-none", valueClass].join(" ")}>
-          {numberOrZero(value)}
-        </p>
-      </button>
+        <p className="text-3xl font-bold text-black">{value}</p>
+      </div>
 
-      <div className="mt-3 space-y-1 border-t border-black/5 pt-3">
-        {rows.map((row) => (
-          <button
-            key={row.label}
-            type="button"
-            onClick={row.onClick}
-            disabled={!row.onClick}
-            className={[
-              "flex w-full items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-left text-sm transition",
-              row.onClick
-                ? "text-neutral-700 hover:bg-white/80"
-                : "text-neutral-600",
-            ].join(" ")}
-          >
-            <span>{row.label}</span>
-            <span className="font-bold text-black">
-              {numberOrZero(row.value)}
-            </span>
-          </button>
-        ))}
+      <div className="mt-4 space-y-2 border-t border-[#eef3ff] pt-3">
+        {children}
       </div>
     </Card>
   )
 }
 
+function SummaryLine({
+  label,
+  value,
+}: {
+  label: string
+  value: number
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm text-neutral-700">
+      <span>{label}</span>
+      <span className="font-semibold text-black">{value}</span>
+    </div>
+  )
+}
+
 export default function TorreAssinaturasPage() {
   const [items, setItems] = useState<AssinaturaItem[]>([])
-  const [summary, setSummary] = useState<Summary>(emptySummary)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -426,17 +572,146 @@ export default function TorreAssinaturasPage() {
     [planoFilter],
   )
 
-  const acaoTrial = useMemo(() => {
-    return items.filter(
-      (item) => getSafePlanoTipo(item) === "Trial" && item.precisa_atencao,
-    ).length
-  }, [items])
+  const loadAssinaturas = useCallback(async () => {
+    setLoading(true)
+    setError(null)
 
-  const acaoPlanos = useMemo(() => {
-    return items.filter(
-      (item) => getSafePlanoTipo(item) === "Plano" && item.precisa_atencao,
-    ).length
-  }, [items])
+    try {
+      const response = await fetch("/api/master/assinaturas", {
+        method: "GET",
+        cache: "no-store",
+      })
+
+      const payload = (await response.json()) as ApiPayload
+
+      if (!response.ok || payload?.ok === false || payload?.success === false) {
+        throw new Error(
+          payload?.message ||
+            payload?.error ||
+            "Não foi possível carregar as assinaturas.",
+        )
+      }
+
+      setItems(extractArray(payload))
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Erro desconhecido ao carregar assinaturas.",
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadAssinaturas()
+  }, [loadAssinaturas])
+
+  useEffect(() => {
+    if (!menuPeriodoAberto) return
+
+    function handleClickFora(event: MouseEvent) {
+      if (
+        menuPeriodoRef.current &&
+        !menuPeriodoRef.current.contains(event.target as Node)
+      ) {
+        setMenuPeriodoAberto(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickFora)
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickFora)
+    }
+  }, [menuPeriodoAberto])
+
+  const filteredItems = useMemo(() => {
+    const cleanSearch = normalizeText(search)
+
+    return items.filter((item) => {
+      const planoCode = getPlanoCode(item)
+      const statusCode = getStatusCode(item)
+
+      const matchesPlano =
+        planoFilter === "todos" || planoFilter === planoCode
+
+      const matchesStatus =
+        statusFilter === "todos" || statusFilter === statusCode
+
+      const matchesDate = matchesPeriodo(item, dateFrom, dateTo)
+
+      const searchable = normalizeText([
+        getClienteDocumento(item),
+        getRazaoSocial(item),
+        getNomeCliente(item),
+        getEmail(item),
+        getWhatsapp(item),
+        getPlanoLabel(item),
+        getStatusLabel(item),
+        item.assinatura_status_detalhe,
+        item.assinatura_valor,
+        getFormaPagamento(item),
+        item.dia_vencimento,
+        item.proximo_vencimento,
+        item.data_ativacao,
+        item.cliente_criado_em,
+      ].join(" "))
+
+      const matchesSearch = !cleanSearch || searchable.includes(cleanSearch)
+
+      return matchesPlano && matchesStatus && matchesDate && matchesSearch
+    })
+  }, [dateFrom, dateTo, items, planoFilter, search, statusFilter])
+
+  const summary = useMemo(() => {
+    return filteredItems.reduce(
+      (acc, item) => {
+        const planoCode = getPlanoCode(item)
+        const statusCode = getStatusCode(item)
+
+        acc.total += 1
+
+        if (planoCode === "trial") {
+          acc.trial += 1
+        } else {
+          acc.planos += 1
+        }
+
+        if (statusCode === "trial_ativo") acc.trialAtivo += 1
+        if (statusCode === "trial_congelado") acc.trialCongelado += 1
+        if (statusCode === "trial_encerrado") acc.trialEncerrado += 1
+
+        if (statusCode === "assinante_ativo") acc.planosAtivos += 1
+        if (statusCode === "assinante_bloqueado") acc.planosBloqueados += 1
+        if (statusCode === "assinante_encerrado") acc.planosEncerrados += 1
+
+        if (item.acao_necessaria && planoCode === "trial") {
+          acc.acaoTrial += 1
+        }
+
+        if (item.acao_necessaria && planoCode !== "trial") {
+          acc.acaoPlanos += 1
+        }
+
+        return acc
+      },
+      {
+        total: 0,
+        trial: 0,
+        planos: 0,
+        trialAtivo: 0,
+        trialCongelado: 0,
+        trialEncerrado: 0,
+        planosAtivos: 0,
+        planosBloqueados: 0,
+        planosEncerrados: 0,
+        acaoTrial: 0,
+        acaoPlanos: 0,
+      },
+    )
+  }, [filteredItems])
 
   const textoPeriodoBotao = useMemo(() => {
     if (periodoSelecionado === "este_mes") return "Este mês"
@@ -467,84 +742,6 @@ export default function TorreAssinaturasPage() {
     return `Filtro aplicado: ${formatDate(dateFrom)} até ${formatDate(dateTo)}`
   }, [dateFrom, dateTo, periodoSelecionado, rascunhoMes])
 
-  const queryString = useMemo(() => {
-    const params = new URLSearchParams()
-
-    params.set("plano", planoFilter)
-    params.set("status", statusFilter)
-
-    if (search.trim()) {
-      params.set("search", search.trim())
-    }
-
-    if (dateFrom) {
-      params.set("dateFrom", dateFrom)
-    }
-
-    if (dateTo) {
-      params.set("dateTo", dateTo)
-    }
-
-    return params.toString()
-  }, [dateFrom, dateTo, planoFilter, search, statusFilter])
-
-  const loadAssinaturas = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch(`/api/master/assinaturas?${queryString}`, {
-        method: "GET",
-        cache: "no-store",
-      })
-
-      const payload = (await response.json()) as ApiResponse
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(
-          payload.message || "Não foi possível carregar as assinaturas.",
-        )
-      }
-
-      setItems(payload.data ?? [])
-      setSummary(normalizeSummary(payload.summary))
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Erro desconhecido ao carregar assinaturas.",
-      )
-
-      setItems([])
-      setSummary(emptySummary)
-    } finally {
-      setLoading(false)
-    }
-  }, [queryString])
-
-  useEffect(() => {
-    void loadAssinaturas()
-  }, [loadAssinaturas])
-
-  useEffect(() => {
-    if (!menuPeriodoAberto) return
-
-    function handleClickFora(event: MouseEvent) {
-      if (
-        menuPeriodoRef.current &&
-        !menuPeriodoRef.current.contains(event.target as Node)
-      ) {
-        setMenuPeriodoAberto(false)
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickFora)
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickFora)
-    }
-  }, [menuPeriodoAberto])
-
   function handlePlanoChange(value: PlanoFilter) {
     setPlanoFilter(value)
 
@@ -560,7 +757,6 @@ export default function TorreAssinaturasPage() {
     setRascunhoMes(rascunhoMes || mesAtual)
     setRascunhoDataInicial(dateFrom)
     setRascunhoDataFinal(dateTo)
-
     setMenuPeriodoAberto(true)
   }
 
@@ -664,134 +860,31 @@ export default function TorreAssinaturasPage() {
           subtitle="Acompanhe clientes em trial, planos, status de acesso e próxima cobrança de cada cliente."
         />
 
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-          <OverviewCard
-            title="Total"
-            value={summary.total}
-            active={statusFilter === "todos" && planoFilter === "todos"}
-            onClick={() => {
-              setStatusFilter("todos")
-              setPlanoFilter("todos")
-            }}
-            rows={[
-              {
-                label: "Trial",
-                value: summary.trial,
-                onClick: () => {
-                  setPlanoFilter("trial")
-                  setStatusFilter("todos")
-                },
-              },
-              {
-                label: "Planos",
-                value: summary.planos,
-                onClick: () => {
-                  setPlanoFilter("plano_lucro_real")
-                  setStatusFilter("todos")
-                },
-              },
-            ]}
-          />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryGroupCard title="Total" value={summary.total}>
+            <SummaryLine label="Trial" value={summary.trial} />
+            <SummaryLine label="Planos" value={summary.planos} />
+          </SummaryGroupCard>
 
-          <OverviewCard
-            title="Trial"
-            value={summary.trial}
-            tone="blue"
-            active={planoFilter === "trial"}
-            onClick={() => {
-              setPlanoFilter("trial")
-              setStatusFilter("todos")
-            }}
-            rows={[
-              {
-                label: "Ativo",
-                value: summary.trialAtivo,
-                onClick: () => {
-                  setPlanoFilter("trial")
-                  setStatusFilter("trial_ativo")
-                },
-              },
-              {
-                label: "Congelado",
-                value: summary.trialCongelado,
-                onClick: () => {
-                  setPlanoFilter("trial")
-                  setStatusFilter("trial_congelado")
-                },
-              },
-              {
-                label: "Encerrado",
-                value: summary.trialEncerrado,
-                onClick: () => {
-                  setPlanoFilter("trial")
-                  setStatusFilter("trial_encerrado")
-                },
-              },
-            ]}
-          />
+          <SummaryGroupCard title="Trial" value={summary.trial}>
+            <SummaryLine label="Ativo" value={summary.trialAtivo} />
+            <SummaryLine label="Congelado" value={summary.trialCongelado} />
+            <SummaryLine label="Encerrado" value={summary.trialEncerrado} />
+          </SummaryGroupCard>
 
-          <OverviewCard
-            title="Planos"
-            value={summary.planos}
-            tone="success"
-            active={planoFilter === "plano_lucro_real"}
-            onClick={() => {
-              setPlanoFilter("plano_lucro_real")
-              setStatusFilter("todos")
-            }}
-            rows={[
-              {
-                label: "Ativos",
-                value: summary.ativos,
-                onClick: () => {
-                  setPlanoFilter("plano_lucro_real")
-                  setStatusFilter("assinante_ativo")
-                },
-              },
-              {
-                label: "Bloqueados",
-                value: summary.bloqueados,
-                onClick: () => {
-                  setPlanoFilter("plano_lucro_real")
-                  setStatusFilter("assinante_bloqueado")
-                },
-              },
-              {
-                label: "Encerrados",
-                value: summary.encerrados,
-                onClick: () => {
-                  setPlanoFilter("plano_lucro_real")
-                  setStatusFilter("assinante_encerrado")
-                },
-              },
-            ]}
-          />
+          <SummaryGroupCard title="Planos" value={summary.planos}>
+            <SummaryLine label="Ativos" value={summary.planosAtivos} />
+            <SummaryLine label="Bloqueados" value={summary.planosBloqueados} />
+            <SummaryLine label="Encerrados" value={summary.planosEncerrados} />
+          </SummaryGroupCard>
 
-          <OverviewCard
+          <SummaryGroupCard
             title="Ação necessária"
-            value={summary.atencao}
-            tone={summary.atencao > 0 ? "danger" : "neutral"}
-            active={statusFilter === "atencao"}
-            onClick={() => setStatusFilter("atencao")}
-            rows={[
-              {
-                label: "Trial",
-                value: acaoTrial,
-                onClick: () => {
-                  setPlanoFilter("trial")
-                  setStatusFilter("atencao")
-                },
-              },
-              {
-                label: "Planos",
-                value: acaoPlanos,
-                onClick: () => {
-                  setPlanoFilter("plano_lucro_real")
-                  setStatusFilter("atencao")
-                },
-              },
-            ]}
-          />
+            value={summary.acaoTrial + summary.acaoPlanos}
+          >
+            <SummaryLine label="Trial" value={summary.acaoTrial} />
+            <SummaryLine label="Planos" value={summary.acaoPlanos} />
+          </SummaryGroupCard>
         </div>
 
         <Card className="overflow-visible rounded-[28px] border border-[#dfe7f7] bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
@@ -801,7 +894,7 @@ export default function TorreAssinaturasPage() {
                 Filtros
               </p>
 
-              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_190px_220px_auto]">
+              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_260px_auto]">
                 <div>
                   <label className="text-sm font-medium text-black">
                     Buscar assinatura
@@ -810,7 +903,7 @@ export default function TorreAssinaturasPage() {
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Cliente, documento, responsável, e-mail, WhatsApp, plano ou status"
+                    placeholder="Cliente, documento, e-mail, WhatsApp, plano ou status"
                     className="mt-2 h-11"
                   />
                 </div>
@@ -913,128 +1006,56 @@ export default function TorreAssinaturasPage() {
                         <button
                           type="button"
                           onClick={aplicarTudo}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "todos"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              ✨
-                            </span>
-                            Tudo
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "todos" ? "✓" : ""}
-                          </span>
+                          Tudo
                         </button>
 
                         <button
                           type="button"
                           onClick={() => aplicarPeriodoRapido("este_mes")}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "este_mes"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              📅
-                            </span>
-                            Este mês
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "este_mes" ? "✓" : ""}
-                          </span>
+                          Este mês
                         </button>
 
                         <button
                           type="button"
                           onClick={() => aplicarPeriodoRapido("mes_passado")}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            periodoSelecionado === "mes_passado"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              🗓️
-                            </span>
-                            Mês passado
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {periodoSelecionado === "mes_passado" ? "✓" : ""}
-                          </span>
+                          Mês passado
                         </button>
 
                         <button
                           type="button"
                           onClick={abrirSelecionarMes}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            rascunhoPeriodo === "mes"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              📆
-                            </span>
-                            Selecionar mês
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {rascunhoPeriodo === "mes" ? "✓" : ""}
-                          </span>
+                          Selecionar mês
                         </button>
 
                         {rascunhoPeriodo === "mes" ? (
-                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
-                            <input
-                              type="month"
-                              value={rascunhoMes}
-                              onChange={(event) =>
-                                aplicarMesSelecionado(event.target.value)
-                              }
-                              className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
-                            />
-                          </div>
+                          <input
+                            type="month"
+                            value={rascunhoMes}
+                            onChange={(event) =>
+                              aplicarMesSelecionado(event.target.value)
+                            }
+                            className="h-9 w-full rounded-2xl border border-[#dfe7f7] bg-white px-3 text-sm text-black outline-none transition focus:border-[#002198]"
+                          />
                         ) : null}
 
                         <button
                           type="button"
                           onClick={abrirPeriodoPersonalizado}
-                          className={[
-                            "flex h-9 w-full items-center justify-between rounded-2xl px-3 text-sm font-semibold transition",
-                            rascunhoPeriodo === "personalizado"
-                              ? "bg-[#eef3ff] text-[#002198]"
-                              : "bg-white text-black hover:bg-[#f8fbff]",
-                          ].join(" ")}
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-black transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex items-center gap-2 text-left">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs">
-                              🔎
-                            </span>
-                            Personalizado
-                          </span>
-
-                          <span className="w-5 text-right text-[#002198]">
-                            {rascunhoPeriodo === "personalizado" ? "✓" : ""}
-                          </span>
+                          Personalizado
                         </button>
 
                         {rascunhoPeriodo === "personalizado" ? (
-                          <div className="mt-2 space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
+                          <div className="space-y-2 rounded-2xl border border-[#dfe7f7] bg-[#f8fbff] p-2.5">
                             <input
                               type="date"
                               value={rascunhoDataInicial}
@@ -1059,16 +1080,11 @@ export default function TorreAssinaturasPage() {
                           </div>
                         ) : null}
 
-                        <div className="my-1 border-t border-[#dfe7f7]" />
-
                         <button
                           type="button"
                           onClick={() => setMenuPeriodoAberto(false)}
-                          className="flex h-9 w-full items-center gap-2 rounded-2xl px-3 text-left text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
+                          className="flex h-9 w-full items-center rounded-2xl px-3 text-sm font-semibold text-neutral-600 transition hover:bg-[#f8fbff]"
                         >
-                          <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#eef3ff] text-xs text-[#002198]">
-                            ✕
-                          </span>
                           Fechar
                         </button>
                       </div>
@@ -1086,7 +1102,7 @@ export default function TorreAssinaturasPage() {
                   </p>
 
                   <p className="mt-1 text-[11px] leading-4 text-neutral-500">
-                    Cadastro para Trial. Ativação para Plano.
+                    Usa cadastro para Trial e ativação para Plano.
                   </p>
                 </div>
               </div>
@@ -1106,166 +1122,156 @@ export default function TorreAssinaturasPage() {
               Carregando assinaturas...
             </p>
           </Card>
-        ) : items.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <Card className="rounded-[28px] border border-[#dfe7f7] bg-white p-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <p className="text-base font-semibold text-black">
               Nenhuma assinatura encontrada.
             </p>
 
             <p className="mt-2 text-sm leading-6 text-neutral-600">
-              Ajuste os filtros ou limpe a busca.
+              Ajuste plano, status, período ou busca.
             </p>
           </Card>
         ) : (
           <div className="overflow-hidden rounded-[28px] border border-[#dfe7f7] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
-            <div className="hidden grid-cols-[1.4fr_1fr_0.75fr_0.65fr_0.85fr_0.75fr_0.45fr] gap-4 border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid">
+            <div className="hidden border-b border-[#dfe7f7] bg-[#f8fbff] px-5 py-3 text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:grid xl:grid-cols-[1.4fr_1fr_0.75fr_0.65fr_0.85fr_0.75fr_0.45fr] xl:items-start xl:gap-4">
               <span>Cliente</span>
               <span>Plano</span>
               <span>Status</span>
-              <span>Valor</span>
-              <span>Cobrança</span>
-              <span>Venc</span>
-              <span className="text-right">Ação</span>
+              <span className="text-center">Valor</span>
+              <span>Pagamento</span>
+              <span>Venc.</span>
+              <span className="text-center">Ação</span>
             </div>
 
             <div className="divide-y divide-[#dfe7f7]">
-              {items.map((item) => {
-                const whatsappLink = buildWhatsAppLink(item.whatsapp)
-                const emailLink = buildMailLink(item.email)
-                const planoLabel = getSafePlanoLabel(item)
-                const planoValue = formatMoney(item.plano_valor)
+              {filteredItems.map((item, index) => {
+                const email = getEmail(item)
+                const whatsapp = getWhatsapp(item)
+                const whatsappLink = buildWhatsAppLink(whatsapp)
+                const mailTo = buildMailTo(email)
+                const planoCode = getPlanoCode(item)
+                const statusDetalhe =
+                  item.assinatura_status_detalhe ||
+                  (item.acao_necessaria ? "Ação necessária" : null)
 
                 return (
                   <div
-                    key={item.id}
+                    key={
+                      item.id ||
+                      item.assinatura_id ||
+                      item.business_id ||
+                      `${getClienteDocumento(item)}-${index}`
+                    }
                     className="grid gap-4 px-5 py-4 xl:grid-cols-[1.4fr_1fr_0.75fr_0.65fr_0.85fr_0.75fr_0.45fr] xl:items-start"
                   >
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Cliente
+                      <p className="text-sm text-[#002198]">
+                        {getClienteDocumento(item)}
                       </p>
 
-                      <p className="mt-1 text-xs font-semibold text-[#002198]">
-                        {item.documento_cliente || "Documento não informado"}
+                      <p className="text-sm text-black">
+                        {getRazaoSocial(item)}
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {item.razao_social || item.cliente}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {item.nome_cliente ||
-                          item.responsavel ||
-                          "Nome não informado"}
+                      <p className="text-sm leading-6 text-neutral-700">
+                        {getNomeCliente(item)}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Plano
-                      </p>
+                      <p className="text-sm text-black">{getPlanoLabel(item)}</p>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {planoLabel}
-                      </p>
-
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {item.data_referencia_label}:{" "}
-                        {formatDate(item.data_referencia)}
-                      </p>
+                      {planoCode === "trial" ? (
+                        <p className="mt-1 text-sm text-neutral-600">
+                          Cadastro: {formatDate(item.cliente_criado_em)}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-sm text-neutral-600">
+                          Ativação: {formatDate(item.data_ativacao)}
+                        </p>
+                      )}
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Status
-                      </p>
+                      <span
+                        className={[
+                          "inline-flex rounded-full border px-3 py-1 text-xs font-semibold",
+                          getStatusTone(item),
+                        ].join(" ")}
+                      >
+                        {getStatusLabel(item)}
+                      </span>
 
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {item.status_label}
-                      </p>
-
-                      {item.precisa_atencao ? (
-                        <p className="mt-1 text-xs font-semibold text-rose-700">
-                          Ação necessária
+                      {statusDetalhe ? (
+                        <p className="mt-2 text-xs font-semibold text-rose-600">
+                          {statusDetalhe}
                         </p>
                       ) : null}
                     </div>
 
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Valor
-                      </p>
-
-                      <p className="mt-1 text-sm font-semibold text-black">
-                        {planoValue}
+                    <div className="xl:text-center">
+                      <p className="text-sm text-neutral-700">
+                        {formatMoney(item.assinatura_valor)}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Forma de Pagamento
-                      </p>
-
-                      <p className="mt-1 text-sm text-neutral-700">
-                        {item.forma_pagamento_label || "Não informado"}
+                      <p className="text-sm text-neutral-700">
+                        {getFormaPagamento(item)}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Dia Vencimento
+                      <p className="text-sm text-neutral-700">
+                        {getDiaVencimento(item)}
                       </p>
 
-                      <p className="mt-1 text-sm text-neutral-700">
-                        {item.dia_vencimento_label ||
-                          formatDate(item.proximo_vencimento)}
-                      </p>
+                      {item.proximo_vencimento ? (
+                        <p className="mt-1 text-xs text-neutral-500">
+                          Próx.: {formatDate(item.proximo_vencimento)}
+                        </p>
+                      ) : null}
                     </div>
 
-                    <div className="xl:text-right">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#002198] xl:hidden">
-                        Ação
-                      </p>
+                    <div className="flex gap-2 xl:justify-center">
+                      {whatsappLink ? (
+                        <a
+                          href={whatsappLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir WhatsApp"
+                          aria-label="Abrir WhatsApp"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span
+                          title="WhatsApp não informado"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </span>
+                      )}
 
-                      <div className="mt-1 flex justify-start gap-2 xl:justify-end">
-                        {whatsappLink ? (
-                          <a
-                            href={whatsappLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Abrir WhatsApp"
-                            aria-label="Abrir WhatsApp"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#002198] text-white transition hover:bg-[#00166f]"
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <span
-                            title="WhatsApp não informado"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </span>
-                        )}
-
-                        {emailLink ? (
-                          <a
-                            href={emailLink}
-                            title="Enviar e-mail"
-                            aria-label="Enviar e-mail"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
-                          >
-                            <Mail className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <span
-                            title="E-mail não informado"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
-                          >
-                            <Mail className="h-4 w-4" />
-                          </span>
-                        )}
-                      </div>
+                      {mailTo ? (
+                        <a
+                          href={mailTo}
+                          title="Enviar e-mail"
+                          aria-label="Enviar e-mail"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-[#002198] transition hover:bg-[#eef3ff]"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span
+                          title="E-mail não informado"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#dfe7f7] bg-white text-neutral-300"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </span>
+                      )}
                     </div>
                   </div>
                 )
