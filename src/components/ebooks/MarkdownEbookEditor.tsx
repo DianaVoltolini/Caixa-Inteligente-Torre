@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 
 type Block =
   | { kind: "heading"; level: number; text: string }
@@ -175,6 +176,14 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
   const [cta, setCta] = useState("")
   const [preview, setPreview] = useState(false)
   const [feedback, setFeedback] = useState("")
+  const [printHost, setPrintHost] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const root = document.createElement("div")
+    root.id = "mci-ebook-print-root"
+    document.body.appendChild(root)
+    setPrintHost(root)
+    return () => { root.remove() }
+  }, [])
   const blocks = useMemo(() => parseMarkdown(markdown), [markdown])
   const headings = blocks.filter((b): b is Extract<Block, { kind: "heading" }> => b.kind === "heading" && b.level === 2)
   const firstTitle = blocks.find((b): b is Extract<Block, { kind: "heading" }> => b.kind === "heading" && b.level === 1)
@@ -199,68 +208,9 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
     URL.revokeObjectURL(url)
   }
 
-  return <div className="min-h-screen bg-[#F8FBFF] text-[#0B1020]">
-    <style>{`
-      @media print {
-        @page { size: A4; margin: 15mm; }
-        .md-editor { display: none !important; }
-        .md-preview-layout { display: block !important; }
-        .md-preview-column { border: 0 !important; box-shadow: none !important; padding: 0 !important; }
-        .md-book { overflow: visible !important; }
-        .md-book > section { max-width: 100% !important; }
-        .md-chapter header, .md-toc header { break-after: avoid; }
-        .md-book { display: block !important; width: 100% !important; max-width: none !important; border: 0 !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
-        .md-cover { min-height: 245mm !important; break-after: page; page-break-after: always; }
-        .ebook-sheet { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; width: 100% !important; margin: 0 !important; }
-        .md-chapter { break-before: page; page-break-before: always; }
-        .md-ending { break-before: page; page-break-before: always; min-height: 245mm !important; }
-        .md-toc { break-after: page; page-break-after: always; }
-        .md-book h2 { break-after: avoid; page-break-after: avoid; }
-        .md-book p, .md-book blockquote, .md-book li, .md-book table { orphans: 3; widows: 3; }
-        .md-book tr { break-inside: avoid; }
-        .md-book * { print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important; }
-      }
-    `}</style>
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <div className="md-editor mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div><p className="text-xs font-bold uppercase tracking-widest text-[#002198]">Meu Caixa Inteligente · Torre</p>
-          <h1 className="mt-2 text-3xl font-extrabold">Criador de E-book — Markdown</h1>
-          <p className="mt-2 text-sm text-slate-600">Diagramação sem IA: o conteúdo é preservado, sem reescrever nem acrescentar informações.</p>
-        </div>
-        <button type="button" onClick={onSwitchMode} className="rounded-2xl border border-[#DFE7F7] bg-white px-4 py-3 text-sm font-semibold text-[#002198]">Usar formulário antigo</button>
-      </div>
-      <div className="md-preview-layout grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <div className="md-editor space-y-4 rounded-[28px] border border-[#DFE7F7] bg-white p-5">
-          <label className="block text-sm font-bold">Título da capa (opcional)
-            <input value={title} onChange={e => { setTitle(e.target.value); setPreview(false) }} placeholder="Se vazio, usa o primeiro título # do Markdown" className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
-          </label>
-          <label className="block text-sm font-bold">Subtítulo (opcional)
-            <input value={subtitle} onChange={e => { setSubtitle(e.target.value); setPreview(false) }} className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
-          </label>
-          <label className="block text-sm font-bold">Autoria / marca
-            <input value={author} onChange={e => { setAuthor(e.target.value); setPreview(false) }} className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
-          </label>
-          <label className="block text-sm font-bold">Chamada final (opcional)
-            <textarea value={cta} onChange={e => { setCta(e.target.value); setPreview(false) }} rows={3} placeholder="Escreva aqui o texto da última página. Se deixar em branco, ela não será criada." className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
-          </label>
-          <label htmlFor="markdown-ebook" className="block text-sm font-bold">Conteúdo completo em Markdown</label>
-          <textarea id="markdown-ebook" value={markdown} onChange={e => { setMarkdown(e.target.value); setPreview(false) }} rows={22} spellCheck={false} placeholder={"# Título do livro\n\n## Capítulo 1\n\nTexto completo do capítulo..."} className="w-full resize-y rounded-2xl border border-[#DFE7F7] bg-[#F8FBFF] p-4 font-mono text-sm leading-6 outline-none focus:border-[#002198]" />
-          <p className="text-xs leading-5 text-slate-500">Aceita títulos #, ##, ###, parágrafos, **negrito**, *itálico*, listas, tabelas, citações e links HTTPS. O editor não executa HTML do texto.</p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={showPreview} className="rounded-xl bg-[#002198] px-5 py-3 text-sm font-bold text-white">Atualizar prévia</button>
-            <button type="button" onClick={() => { setMarkdown(example); setTitle(""); setSubtitle(""); setPreview(false); setFeedback("") }} className="rounded-xl border border-[#DFE7F7] px-4 py-3 text-sm font-semibold">Carregar exemplo</button>
-            <button type="button" disabled={!markdown.trim()} onClick={saveMarkdown} className="rounded-xl border border-[#DFE7F7] px-4 py-3 text-sm font-semibold disabled:opacity-50">Salvar .md</button>
-            <button type="button" disabled={!preview} onClick={printPdf} className="rounded-xl border border-[#DFE7F7] px-4 py-3 text-sm font-semibold disabled:opacity-50">Salvar PDF</button>
-          </div>
-          {feedback && <p role="status" className="text-sm font-semibold text-amber-700">{feedback}</p>}
-        </div>
-        <div className="md-preview-column min-w-0 rounded-[28px] border border-[#DFE7F7] bg-white p-4 sm:p-5">
-          <div className="md-editor mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-bold text-[#002198]">Pré-visualização do e-book</p>
-            {preview && <span role="status" className="text-xs text-emerald-700">Prévia atualizada</span>}
-          </div>
-          {!preview ? <div className="md-editor rounded-2xl bg-[#F8FBFF] p-5 text-sm text-slate-600">Cole seu Markdown e clique em “Atualizar prévia” para visualizar capa, sumário e conteúdo diagramado aqui.</div> : null}
-          {preview && <article className="md-book mx-auto w-full max-w-[794px] space-y-5">
+  function renderBook() {
+    return (
+<article className="md-book mx-auto w-full max-w-[794px] space-y-5">
             <section className="md-cover ebook-sheet relative flex min-h-[780px] flex-col justify-between overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-[#F8FBFF] p-7 shadow-lg sm:p-10">
               <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-200" />
               <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -left-24 h-64 w-64 rounded-full bg-indigo-100" />
@@ -319,9 +269,80 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
               </div>
               <p className="relative break-words text-sm font-bold text-[#002198]">{author}</p>
             </section>}
-          </article>}
+          </article>
+    )
+  }
+
+  return <div className="min-h-screen bg-[#F8FBFF] text-[#0B1020]">
+    <style>{`
+      #mci-ebook-print-root { display: none; }
+      @media print {
+        @page { size: A4 portrait; margin: 12mm; }
+        html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
+        body > *:not(#mci-ebook-print-root) { display: none !important; }
+        #mci-ebook-print-root { display: block !important; position: static !important; width: 100% !important; background: white !important; }
+        #mci-ebook-print-root .md-book { display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+        #mci-ebook-print-root .ebook-sheet { display: block !important; width: 100% !important; min-height: 0 !important; height: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; break-before: auto !important; break-after: auto !important; page-break-before: auto !important; page-break-after: auto !important; }
+        #mci-ebook-print-root .md-cover { display: flex !important; flex-direction: column !important; justify-content: space-between !important; height: 270mm !important; min-height: 270mm !important; max-height: 270mm !important; box-sizing: border-box !important; padding: 16mm !important; overflow: hidden !important; break-after: page !important; page-break-after: always !important; }
+        #mci-ebook-print-root .md-toc { break-after: page !important; page-break-after: always !important; }
+        #mci-ebook-print-root .md-toc header { padding: 7mm 10mm !important; }
+        #mci-ebook-print-root .md-toc ol { padding: 4mm 10mm 7mm !important; }
+        #mci-ebook-print-root .md-toc li { padding-top: 2mm !important; padding-bottom: 2mm !important; line-height: 1.35 !important; }
+        #mci-ebook-print-root .md-chapter { break-before: auto !important; page-break-before: auto !important; margin: 0 !important; }
+        #mci-ebook-print-root .md-chapter header { padding: 6mm 8mm !important; break-inside: avoid !important; page-break-inside: avoid !important; }
+        #mci-ebook-print-root .md-chapter > div { padding: 5mm 8mm 6mm !important; }
+        #mci-ebook-print-root .md-chapter > footer { padding: 2mm 8mm !important; }
+        #mci-ebook-print-root .md-ending { break-before: auto !important; page-break-before: auto !important; padding: 10mm !important; }
+        #mci-ebook-print-root h1, #mci-ebook-print-root h2, #mci-ebook-print-root h3 { break-after: avoid !important; page-break-after: avoid !important; }
+        #mci-ebook-print-root p, #mci-ebook-print-root li { orphans: 3; widows: 3; }
+        #mci-ebook-print-root tr, #mci-ebook-print-root blockquote, #mci-ebook-print-root pre { break-inside: avoid !important; page-break-inside: avoid !important; }
+        #mci-ebook-print-root table { width: 100% !important; table-layout: auto !important; }
+        #mci-ebook-print-root * { print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important; }
+      }
+    `}</style>
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <div className="md-editor mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div><p className="text-xs font-bold uppercase tracking-widest text-[#002198]">Meu Caixa Inteligente · Torre</p>
+          <h1 className="mt-2 text-3xl font-extrabold">Criador de E-book — Markdown</h1>
+          <p className="mt-2 text-sm text-slate-600">Diagramação sem IA: o conteúdo é preservado, sem reescrever nem acrescentar informações.</p>
+        </div>
+        <button type="button" onClick={onSwitchMode} className="rounded-2xl border border-[#DFE7F7] bg-white px-4 py-3 text-sm font-semibold text-[#002198]">Usar formulário antigo</button>
+      </div>
+      <div className="md-preview-layout grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="md-editor space-y-4 rounded-[28px] border border-[#DFE7F7] bg-white p-5">
+          <label className="block text-sm font-bold">Título da capa (opcional)
+            <input value={title} onChange={e => { setTitle(e.target.value); setPreview(false) }} placeholder="Se vazio, usa o primeiro título # do Markdown" className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
+          </label>
+          <label className="block text-sm font-bold">Subtítulo (opcional)
+            <input value={subtitle} onChange={e => { setSubtitle(e.target.value); setPreview(false) }} className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
+          </label>
+          <label className="block text-sm font-bold">Autoria / marca
+            <input value={author} onChange={e => { setAuthor(e.target.value); setPreview(false) }} className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
+          </label>
+          <label className="block text-sm font-bold">Chamada final (opcional)
+            <textarea value={cta} onChange={e => { setCta(e.target.value); setPreview(false) }} rows={3} placeholder="Escreva aqui o texto da última página. Se deixar em branco, ela não será criada." className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
+          </label>
+          <label htmlFor="markdown-ebook" className="block text-sm font-bold">Conteúdo completo em Markdown</label>
+          <textarea id="markdown-ebook" value={markdown} onChange={e => { setMarkdown(e.target.value); setPreview(false) }} rows={22} spellCheck={false} placeholder={"# Título do livro\n\n## Capítulo 1\n\nTexto completo do capítulo..."} className="w-full resize-y rounded-2xl border border-[#DFE7F7] bg-[#F8FBFF] p-4 font-mono text-sm leading-6 outline-none focus:border-[#002198]" />
+          <p className="text-xs leading-5 text-slate-500">Aceita títulos #, ##, ###, parágrafos, **negrito**, *itálico*, listas, tabelas, citações e links HTTPS. O editor não executa HTML do texto.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={showPreview} className="rounded-xl bg-[#002198] px-5 py-3 text-sm font-bold text-white">Atualizar prévia</button>
+            <button type="button" onClick={() => { setMarkdown(example); setTitle(""); setSubtitle(""); setPreview(false); setFeedback("") }} className="rounded-xl border border-[#DFE7F7] px-4 py-3 text-sm font-semibold">Carregar exemplo</button>
+            <button type="button" disabled={!markdown.trim()} onClick={saveMarkdown} className="rounded-xl border border-[#DFE7F7] px-4 py-3 text-sm font-semibold disabled:opacity-50">Salvar .md</button>
+            <button type="button" disabled={!preview} onClick={printPdf} className="rounded-xl border border-[#DFE7F7] px-4 py-3 text-sm font-semibold disabled:opacity-50">Salvar PDF</button>
+          </div>
+          {feedback && <p role="status" className="text-sm font-semibold text-amber-700">{feedback}</p>}
+        </div>
+        <div className="md-preview-column min-w-0 rounded-[28px] border border-[#DFE7F7] bg-white p-4 sm:p-5">
+          <div className="md-editor mb-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-[#002198]">Pré-visualização do e-book</p>
+            {preview && <span role="status" className="text-xs text-emerald-700">Prévia atualizada</span>}
+          </div>
+          {!preview ? <div className="md-editor rounded-2xl bg-[#F8FBFF] p-5 text-sm text-slate-600">Cole seu Markdown e clique em “Atualizar prévia” para visualizar capa, sumário e conteúdo diagramado aqui.</div> : null}
+          {preview && renderBook()}
         </div>
       </div>
     </div>
+    {printHost && preview ? createPortal(renderBook(), printHost) : null}
   </div>
 }
