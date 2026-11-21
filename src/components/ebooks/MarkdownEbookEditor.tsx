@@ -189,6 +189,9 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
       @media print {
         @page { size: A4; margin: 15mm; }
         .md-editor { display: none !important; }
+        .md-preview-layout { display: block !important; }
+        .md-preview-column { border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+        .md-book { overflow: visible !important; }
         .md-book { display: block !important; width: 100% !important; max-width: none !important; border: 0 !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
         .md-cover { min-height: 245mm !important; break-after: page; page-break-after: always; }
         .md-toc { break-after: page; page-break-after: always; }
@@ -198,16 +201,16 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
         .md-book * { print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important; }
       }
     `}</style>
-    <div className="md-editor mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <div className="md-editor mb-6 flex flex-wrap items-center justify-between gap-3">
         <div><p className="text-xs font-bold uppercase tracking-widest text-[#002198]">Meu Caixa Inteligente · Torre</p>
           <h1 className="mt-2 text-3xl font-extrabold">Criador de E-book — Markdown</h1>
           <p className="mt-2 text-sm text-slate-600">Diagramação sem IA: o conteúdo é preservado, sem reescrever nem acrescentar informações.</p>
         </div>
         <button type="button" onClick={onSwitchMode} className="rounded-2xl border border-[#DFE7F7] bg-white px-4 py-3 text-sm font-semibold text-[#002198]">Usar formulário antigo</button>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <div className="space-y-4 rounded-[28px] border border-[#DFE7F7] bg-white p-5">
+      <div className="md-preview-layout grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="md-editor space-y-4 rounded-[28px] border border-[#DFE7F7] bg-white p-5">
           <label className="block text-sm font-bold">Título da capa (opcional)
             <input value={title} onChange={e => { setTitle(e.target.value); setPreview(false) }} placeholder="Se vazio, usa o primeiro título # do Markdown" className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
           </label>
@@ -228,14 +231,13 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
           </div>
           {feedback && <p role="status" className="text-sm font-semibold text-amber-700">{feedback}</p>}
         </div>
-        <div className="rounded-[28px] border border-[#DFE7F7] bg-white p-5">
-          <p className="mb-4 text-sm font-bold text-[#002198]">Pré-visualização do e-book</p>
-          {!preview ? <p className="rounded-2xl bg-[#F8FBFF] p-5 text-sm text-slate-600">Cole o texto e clique em “Atualizar prévia”. As alterações não serão impressas até atualizar a prévia.</p> :
-            <div className="text-sm text-slate-600">Prévia atualizada. O conteúdo completo aparece abaixo e pode ser salvo em PDF.</div>}
-        </div>
-      </div>
-    </div>
-    {preview && <article className="md-book mx-auto mb-10 max-w-[794px] overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-white shadow-xl">
+        <div className="md-preview-column min-w-0 rounded-[28px] border border-[#DFE7F7] bg-white p-4 sm:p-5">
+          <div className="md-editor mb-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-[#002198]">Pré-visualização do e-book</p>
+            {preview && <span role="status" className="text-xs text-emerald-700">Prévia atualizada</span>}
+          </div>
+          {!preview ? <div className="md-editor rounded-2xl bg-[#F8FBFF] p-5 text-sm text-slate-600">Cole seu Markdown e clique em “Atualizar prévia” para visualizar capa, sumário e conteúdo diagramado aqui.</div> : null}
+          {preview && <article className="md-book mx-auto w-full max-w-[794px] overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-white shadow-xl">
       <section className="md-cover flex min-h-[980px] flex-col justify-between bg-[#F8FBFF] p-10 sm:p-14">
         <div className="inline-flex self-start rounded-full border border-[#DFE7F7] bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-widest text-[#002198]">Meu Caixa Inteligente</div>
         <div>
@@ -253,5 +255,8 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
       <div className="px-10 py-10 sm:px-14 sm:py-14">{blocks.filter(b => !(b.kind === "heading" && b.level === 1 && b.text === firstTitle?.text)).map((block, i) => <RenderBlock key={i} block={block} />)}</div>
       <footer className="border-t border-[#DFE7F7] px-10 py-6 text-xs font-semibold text-[#002198]">{author} · Meu Caixa Inteligente</footer>
     </article>}
+        </div>
+      </div>
+    </div>
   </div>
 }
