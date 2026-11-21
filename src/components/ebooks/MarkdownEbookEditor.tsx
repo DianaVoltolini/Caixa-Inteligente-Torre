@@ -154,17 +154,32 @@ function RenderBlock({ block }: { block: Block }) {
   </table></div>
 }
 
+type EbookSection = { heading: string | null; blocks: Block[] }
+function groupSections(blocks: Block[]): EbookSection[] {
+  const sections: EbookSection[] = [{ heading: null, blocks: [] }]
+  for (const block of blocks) {
+    if (block.kind === "heading" && block.level === 2) {
+      sections.push({ heading: block.text, blocks: [] })
+    } else {
+      sections[sections.length - 1].blocks.push(block)
+    }
+  }
+  return sections.filter(section => section.heading !== null || section.blocks.length > 0)
+}
+
 export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: () => void }) {
   const [markdown, setMarkdown] = useState("")
   const [title, setTitle] = useState("")
   const [subtitle, setSubtitle] = useState("")
   const [author, setAuthor] = useState("Meu Caixa Inteligente")
+  const [cta, setCta] = useState("")
   const [preview, setPreview] = useState(false)
   const [feedback, setFeedback] = useState("")
   const blocks = useMemo(() => parseMarkdown(markdown), [markdown])
   const headings = blocks.filter((b): b is Extract<Block, { kind: "heading" }> => b.kind === "heading" && b.level === 2)
   const firstTitle = blocks.find((b): b is Extract<Block, { kind: "heading" }> => b.kind === "heading" && b.level === 1)
   const bookTitle = title.trim() || firstTitle?.text || "E-book"
+  const sections = useMemo(() => groupSections(blocks.filter(b => !(b.kind === "heading" && b.level === 1 && b.text === firstTitle?.text))), [blocks, firstTitle?.text])
   function showPreview() {
     if (!markdown.trim()) { setFeedback("Cole o conteúdo Markdown antes de visualizar."); return }
     setFeedback("")
@@ -192,8 +207,13 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
         .md-preview-layout { display: block !important; }
         .md-preview-column { border: 0 !important; box-shadow: none !important; padding: 0 !important; }
         .md-book { overflow: visible !important; }
+        .md-book > section { max-width: 100% !important; }
+        .md-chapter header, .md-toc header { break-after: avoid; }
         .md-book { display: block !important; width: 100% !important; max-width: none !important; border: 0 !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
         .md-cover { min-height: 245mm !important; break-after: page; page-break-after: always; }
+        .ebook-sheet { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; width: 100% !important; margin: 0 !important; }
+        .md-chapter { break-before: page; page-break-before: always; }
+        .md-ending { break-before: page; page-break-before: always; min-height: 245mm !important; }
         .md-toc { break-after: page; page-break-after: always; }
         .md-book h2 { break-after: avoid; page-break-after: avoid; }
         .md-book p, .md-book blockquote, .md-book li, .md-book table { orphans: 3; widows: 3; }
@@ -220,6 +240,9 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
           <label className="block text-sm font-bold">Autoria / marca
             <input value={author} onChange={e => { setAuthor(e.target.value); setPreview(false) }} className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
           </label>
+          <label className="block text-sm font-bold">Chamada final (opcional)
+            <textarea value={cta} onChange={e => { setCta(e.target.value); setPreview(false) }} rows={3} placeholder="Escreva aqui o texto da última página. Se deixar em branco, ela não será criada." className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
+          </label>
           <label htmlFor="markdown-ebook" className="block text-sm font-bold">Conteúdo completo em Markdown</label>
           <textarea id="markdown-ebook" value={markdown} onChange={e => { setMarkdown(e.target.value); setPreview(false) }} rows={22} spellCheck={false} placeholder={"# Título do livro\n\n## Capítulo 1\n\nTexto completo do capítulo..."} className="w-full resize-y rounded-2xl border border-[#DFE7F7] bg-[#F8FBFF] p-4 font-mono text-sm leading-6 outline-none focus:border-[#002198]" />
           <p className="text-xs leading-5 text-slate-500">Aceita títulos #, ##, ###, parágrafos, **negrito**, *itálico*, listas, tabelas, citações e links HTTPS. O editor não executa HTML do texto.</p>
@@ -237,24 +260,66 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
             {preview && <span role="status" className="text-xs text-emerald-700">Prévia atualizada</span>}
           </div>
           {!preview ? <div className="md-editor rounded-2xl bg-[#F8FBFF] p-5 text-sm text-slate-600">Cole seu Markdown e clique em “Atualizar prévia” para visualizar capa, sumário e conteúdo diagramado aqui.</div> : null}
-          {preview && <article className="md-book mx-auto w-full max-w-[794px] overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-white shadow-xl">
-      <section className="md-cover flex min-h-[980px] flex-col justify-between bg-[#F8FBFF] p-10 sm:p-14">
-        <div className="inline-flex self-start rounded-full border border-[#DFE7F7] bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-widest text-[#002198]">Meu Caixa Inteligente</div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#002198]">E-book digital</p>
-          <h2 className="mt-7 text-5xl font-extrabold leading-tight text-[#07122F]">{bookTitle}</h2>
-          {subtitle && <p className="mt-6 text-xl leading-8 text-slate-600">{subtitle}</p>}
-          <div className="mt-9 h-2 w-28 rounded bg-[#002198]" />
-        </div>
-        <p className="text-sm font-semibold text-[#002198]">{author}</p>
-      </section>
-      {headings.length > 0 && <section className="md-toc p-10 sm:p-14">
-        <h2 className="mb-8 border-b border-[#DFE7F7] pb-4 text-3xl font-bold text-[#002198]">Sumário</h2>
-        <ol className="space-y-4">{headings.map((h, i) => <li key={i} className="border-b border-dashed border-[#DFE7F7] pb-3 text-base text-slate-700">{h.text}</li>)}</ol>
-      </section>}
-      <div className="px-10 py-10 sm:px-14 sm:py-14">{blocks.filter(b => !(b.kind === "heading" && b.level === 1 && b.text === firstTitle?.text)).map((block, i) => <RenderBlock key={i} block={block} />)}</div>
-      <footer className="border-t border-[#DFE7F7] px-10 py-6 text-xs font-semibold text-[#002198]">{author} · Meu Caixa Inteligente</footer>
-    </article>}
+          {preview && <article className="md-book mx-auto w-full max-w-[794px] space-y-5">
+            <section className="md-cover ebook-sheet relative flex min-h-[780px] flex-col justify-between overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-[#F8FBFF] p-7 shadow-lg sm:p-10">
+              <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-200" />
+              <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -left-24 h-64 w-64 rounded-full bg-indigo-100" />
+              <div className="relative inline-flex self-start items-center gap-2 rounded-full border border-[#DFE7F7] bg-white px-4 py-2 shadow-sm">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#002198] text-xs font-black text-white">MCI</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#002198]">Meu Caixa Inteligente</span>
+              </div>
+              <div className="relative max-w-xl py-12">
+                <p className="text-[11px] font-black uppercase tracking-[0.23em] text-[#002198]">Guia prático digital</p>
+                <h2 className="mt-7 break-words text-4xl font-black leading-tight tracking-tight text-[#0B1020] sm:text-5xl">{bookTitle}</h2>
+                {subtitle && <p className="mt-6 text-lg font-semibold leading-8 text-slate-700">{subtitle}</p>}
+                <div className="mt-9 h-2 w-28 rounded-full bg-[#002198]" />
+              </div>
+              <div className="relative grid gap-3 sm:grid-cols-[1fr_auto]">
+                <div className="rounded-[24px] border border-[#DFE7F7] bg-white/95 p-5">
+                  <p className="text-xs font-semibold text-slate-500">Criado por</p>
+                  <p className="mt-2 break-words text-base font-black text-[#0B1020]">{author}</p>
+                </div>
+                <div className="rounded-[24px] bg-[#002198] p-5 text-white">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100">Método simples</p>
+                  <p className="mt-2 font-black">Entrou · Saiu · Sobrou</p>
+                </div>
+              </div>
+            </section>
+            {headings.length > 0 && <section className="md-toc ebook-sheet overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-white shadow-lg">
+              <header className="relative overflow-hidden border-b border-[#DFE7F7] bg-[#F8FBFF] px-7 py-8 sm:px-10">
+                <div aria-hidden="true" className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-100" />
+                <p className="relative text-[11px] font-black uppercase tracking-widest text-[#002198]">Navegação</p>
+                <h2 className="relative mt-2 text-3xl font-black text-[#0B1020]">Sumário</h2>
+              </header>
+              <ol className="space-y-1 p-7 sm:p-10">{headings.map((h, i) => <li key={i} className="flex items-start gap-3 border-b border-dashed border-[#DFE7F7] py-3 text-sm leading-6 text-slate-700">
+                <span className="font-black text-[#002198]">{String(i + 1).padStart(2, "0")}</span><span>{h.text}</span>
+              </li>)}</ol>
+            </section>}
+            {sections.map((section, index) => <section key={index} className="md-chapter ebook-sheet overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-white shadow-lg">
+              {section.heading && <header className="relative overflow-hidden border-b border-[#DFE7F7] bg-[#F8FBFF] px-7 py-8 sm:px-10">
+                <div aria-hidden="true" className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-100" />
+                <div className="relative">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">{/cap[ií]tulo/i.test(section.heading) ? "Capítulo" : "Seção"} {String(index + 1).padStart(2, "0")}</p>
+                  <h2 className="mt-3 break-words text-2xl font-black leading-tight text-[#0B1020] sm:text-3xl">{section.heading}</h2>
+                </div>
+              </header>}
+              <div className="px-7 py-8 sm:px-10">
+                {section.blocks.map((block, i) => <RenderBlock key={i} block={block} />)}
+              </div>
+              <footer className="border-t border-[#DFE7F7] bg-[#F8FBFF] px-7 py-4 text-[10px] font-bold uppercase tracking-wider text-[#002198] sm:px-10">{author} · Meu Caixa Inteligente</footer>
+            </section>)}
+            {cta.trim() && <section className="md-ending ebook-sheet relative flex min-h-[620px] flex-col justify-between overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-[#F8FBFF] p-8 shadow-lg sm:p-10">
+              <div aria-hidden="true" className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-200" />
+              <div className="relative inline-flex self-start rounded-full border border-[#DFE7F7] bg-white px-5 py-3 text-[10px] font-black uppercase tracking-wider text-[#002198]">Meu Caixa Inteligente</div>
+              <div className="relative">
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">Próximo passo</p>
+                <div className="mt-8 rounded-[26px] bg-[#002198] p-6 text-white">
+                  <p className="whitespace-pre-wrap text-lg font-semibold leading-8">{cta}</p>
+                </div>
+              </div>
+              <p className="relative break-words text-sm font-bold text-[#002198]">{author}</p>
+            </section>}
+          </article>}
         </div>
       </div>
     </div>
