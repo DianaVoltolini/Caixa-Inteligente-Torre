@@ -9,6 +9,7 @@ import {
   CreditCard,
   DollarSign,
   FileText,
+  BookOpen,
   LayoutDashboard,
   Link2,
   ScrollText,
@@ -56,6 +57,11 @@ const items = [
     label: "Integração Bling",
     href: "/integracoes/bling",
     icon: Link2,
+  },
+  {
+    label: "Criador de E-book",
+    href: "/criador-ebooks",
+    icon: BookOpen,
   },
   {
     label: "Logs",
