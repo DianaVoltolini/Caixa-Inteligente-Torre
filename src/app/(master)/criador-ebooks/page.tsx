@@ -1,6 +1,8 @@
 // src/app/criador-ebooks/page.tsx
 "use client"
 
+import MarkdownEbookEditor from "@/components/ebooks/MarkdownEbookEditor"
+
 import {
   useRef,
   useState,
@@ -885,6 +887,7 @@ function BrandBadge() {
 }
 
 export default function CriadorEbooksPage() {
+  const [editorMode, setEditorMode] = useState<"markdown" | "form">("markdown")
   const [form, setForm] = useState<FormState>(initialForm)
   const [errors, setErrors] = useState<FormErrors>({})
   const [result, setResult] = useState<EbookResult | null>(null)
@@ -988,6 +991,10 @@ export default function CriadorEbooksPage() {
     setFeedback("")
   }
 
+  if (editorMode === "markdown") {
+    return <MarkdownEbookEditor onSwitchMode={() => setEditorMode("form")} />
+  }
+
   return (
     <main className="min-h-screen bg-[#F8FBFF] text-[#0B1020]">
       <style>{`
@@ -1045,6 +1052,9 @@ export default function CriadorEbooksPage() {
         }
       `}</style>
 
+      <div className="no-print mx-auto flex max-w-7xl justify-end px-4 pt-4 sm:px-6">
+        <button type="button" onClick={() => setEditorMode("markdown")} className="rounded-2xl border border-[#DFE7F7] bg-white px-4 py-3 text-sm font-semibold text-[#002198]">Diagramar conteúdo em Markdown</button>
+      </div>
       <section className="no-print relative overflow-hidden border-b border-[#DFE7F7] bg-white">
         <div className="absolute left-[-120px] top-[-160px] h-[420px] w-[420px] rounded-full bg-blue-100 blur-3xl" />
         <div className="absolute right-[-120px] top-10 h-[460px] w-[460px] rounded-full bg-indigo-100 blur-3xl" />
