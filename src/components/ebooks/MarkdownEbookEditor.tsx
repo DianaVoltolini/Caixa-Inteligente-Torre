@@ -172,6 +172,7 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
   const [title, setTitle] = useState("")
   const [subtitle, setSubtitle] = useState("")
   const [author, setAuthor] = useState("Meu Caixa Inteligente")
+  const [cta, setCta] = useState("")
   const [preview, setPreview] = useState(false)
   const [feedback, setFeedback] = useState("")
   const blocks = useMemo(() => parseMarkdown(markdown), [markdown])
@@ -239,6 +240,9 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
           <label className="block text-sm font-bold">Autoria / marca
             <input value={author} onChange={e => { setAuthor(e.target.value); setPreview(false) }} className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
           </label>
+          <label className="block text-sm font-bold">Chamada final (opcional)
+            <textarea value={cta} onChange={e => { setCta(e.target.value); setPreview(false) }} rows={3} placeholder="Escreva aqui o texto da última página. Se deixar em branco, ela não será criada." className="mt-2 w-full rounded-xl border border-[#DFE7F7] p-3 font-normal" />
+          </label>
           <label htmlFor="markdown-ebook" className="block text-sm font-bold">Conteúdo completo em Markdown</label>
           <textarea id="markdown-ebook" value={markdown} onChange={e => { setMarkdown(e.target.value); setPreview(false) }} rows={22} spellCheck={false} placeholder={"# Título do livro\n\n## Capítulo 1\n\nTexto completo do capítulo..."} className="w-full resize-y rounded-2xl border border-[#DFE7F7] bg-[#F8FBFF] p-4 font-mono text-sm leading-6 outline-none focus:border-[#002198]" />
           <p className="text-xs leading-5 text-slate-500">Aceita títulos #, ##, ###, parágrafos, **negrito**, *itálico*, listas, tabelas, citações e links HTTPS. O editor não executa HTML do texto.</p>
@@ -304,19 +308,17 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
               </div>
               <footer className="border-t border-[#DFE7F7] bg-[#F8FBFF] px-7 py-4 text-[10px] font-bold uppercase tracking-wider text-[#002198] sm:px-10">{author} · Meu Caixa Inteligente</footer>
             </section>)}
-            <section className="md-ending ebook-sheet relative flex min-h-[620px] flex-col justify-between overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-[#F8FBFF] p-8 shadow-lg sm:p-10">
+            {cta.trim() && <section className="md-ending ebook-sheet relative flex min-h-[620px] flex-col justify-between overflow-hidden rounded-[28px] border border-[#DFE7F7] bg-[#F8FBFF] p-8 shadow-lg sm:p-10">
               <div aria-hidden="true" className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-200" />
               <div className="relative inline-flex self-start rounded-full border border-[#DFE7F7] bg-white px-5 py-3 text-[10px] font-black uppercase tracking-wider text-[#002198]">Meu Caixa Inteligente</div>
               <div className="relative">
                 <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">Próximo passo</p>
-                <h2 className="mt-5 text-3xl font-black leading-tight text-[#0B1020]">Transforme clareza em rotina</h2>
                 <div className="mt-8 rounded-[26px] bg-[#002198] p-6 text-white">
-                  <p className="text-lg font-black">Meu Caixa Inteligente</p>
-                  <p className="mt-3 text-sm leading-7 text-blue-50">Registre o que entrou, o que saiu e acompanhe quanto realmente sobrou.</p>
+                  <p className="whitespace-pre-wrap text-lg font-semibold leading-8">{cta}</p>
                 </div>
               </div>
               <p className="relative break-words text-sm font-bold text-[#002198]">{author}</p>
-            </section>
+            </section>}
           </article>}
         </div>
       </div>
