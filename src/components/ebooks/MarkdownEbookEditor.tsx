@@ -249,7 +249,7 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
               {section.heading && <header className="relative overflow-hidden border-b border-[#DFE7F7] bg-[#F8FBFF] px-7 py-8 sm:px-10">
                 <div aria-hidden="true" className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-100" />
                 <div className="relative">
-                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">{/cap[ií]tulo/i.test(section.heading) ? "Capítulo" : "Seção"} {String(index + 1).padStart(2, "0")}</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">Seção {section.heading.match(/^\s*(\d+)[.)]/)?.[1]?.padStart(2, "0") || String(index + 1).padStart(2, "0")}</p>
                   <h2 className="mt-3 break-words text-2xl font-black leading-tight text-[#0B1020] sm:text-3xl">{section.heading}</h2>
                 </div>
               </header>}
@@ -277,26 +277,36 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
     <style>{`
       #mci-ebook-print-root { display: none; }
       @media print {
-        @page { size: A4 portrait; margin: 12mm; }
+        @page { size: A4 portrait; margin: 12mm 14mm; }
         html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
         body > *:not(#mci-ebook-print-root) { display: none !important; }
-        #mci-ebook-print-root { display: block !important; position: static !important; width: 100% !important; background: white !important; }
-        #mci-ebook-print-root .md-book { display: block !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
-        #mci-ebook-print-root .ebook-sheet { display: block !important; width: 100% !important; min-height: 0 !important; height: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; break-before: auto !important; break-after: auto !important; page-break-before: auto !important; page-break-after: auto !important; }
-        #mci-ebook-print-root .md-cover { display: flex !important; flex-direction: column !important; justify-content: space-between !important; height: 270mm !important; min-height: 270mm !important; max-height: 270mm !important; box-sizing: border-box !important; padding: 16mm !important; overflow: hidden !important; break-after: page !important; page-break-after: always !important; }
-        #mci-ebook-print-root .md-toc { break-after: page !important; page-break-after: always !important; }
-        #mci-ebook-print-root .md-toc header { padding: 7mm 10mm !important; }
-        #mci-ebook-print-root .md-toc ol { padding: 4mm 10mm 7mm !important; }
-        #mci-ebook-print-root .md-toc li { padding-top: 2mm !important; padding-bottom: 2mm !important; line-height: 1.35 !important; }
-        #mci-ebook-print-root .md-chapter { break-before: auto !important; page-break-before: auto !important; margin: 0 !important; }
-        #mci-ebook-print-root .md-chapter header { padding: 6mm 8mm !important; break-inside: avoid !important; page-break-inside: avoid !important; }
-        #mci-ebook-print-root .md-chapter > div { padding: 5mm 8mm 6mm !important; }
-        #mci-ebook-print-root .md-chapter > footer { padding: 2mm 8mm !important; }
-        #mci-ebook-print-root .md-ending { break-before: auto !important; page-break-before: auto !important; padding: 10mm !important; }
-        #mci-ebook-print-root h1, #mci-ebook-print-root h2, #mci-ebook-print-root h3 { break-after: avoid !important; page-break-after: avoid !important; }
-        #mci-ebook-print-root p, #mci-ebook-print-root li { orphans: 3; widows: 3; }
-        #mci-ebook-print-root tr, #mci-ebook-print-root blockquote, #mci-ebook-print-root pre { break-inside: avoid !important; page-break-inside: avoid !important; }
-        #mci-ebook-print-root table { width: 100% !important; table-layout: auto !important; }
+        #mci-ebook-print-root { display: block !important; position: static !important; width: auto !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+        #mci-ebook-print-root .md-book { display: block !important; width: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+        #mci-ebook-print-root .ebook-sheet { width: auto !important; max-width: none !important; margin: 0 !important; min-height: 0 !important; height: auto !important; max-height: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible !important; break-inside: auto !important; page-break-inside: auto !important; break-before: auto !important; break-after: auto !important; page-break-before: auto !important; page-break-after: auto !important; }
+        /* A capa e o sumário têm paginação exclusiva. Os capítulos compartilham as demais folhas. */
+        #mci-ebook-print-root .md-cover { display: flex !important; flex-direction: column !important; justify-content: space-between !important; height: 264mm !important; min-height: 264mm !important; max-height: 264mm !important; box-sizing: border-box !important; padding: 12mm !important; overflow: hidden !important; break-after: page !important; page-break-after: always !important; }
+        #mci-ebook-print-root .md-toc { display: block !important; break-after: page !important; page-break-after: always !important; }
+        #mci-ebook-print-root .md-toc header { padding: 5mm 7mm !important; }
+        #mci-ebook-print-root .md-toc ol { padding: 4mm 7mm 6mm !important; }
+        #mci-ebook-print-root .md-toc li { padding: 1.5mm 0 !important; line-height: 1.35 !important; font-size: 10pt !important; }
+        /* display:contents evita que um cartão de capítulo force a próxima página antes da hora. */
+        #mci-ebook-print-root .md-chapter { display: contents !important; }
+        #mci-ebook-print-root .md-chapter > header { display: block !important; margin: 5mm 0 0 !important; padding: 5mm 7mm !important; break-inside: avoid !important; page-break-inside: avoid !important; break-after: avoid !important; page-break-after: avoid !important; }
+        #mci-ebook-print-root .md-chapter > header h2 { font-size: 17pt !important; line-height: 1.18 !important; margin: 2mm 0 0 !important; }
+        #mci-ebook-print-root .md-chapter > header p { font-size: 8pt !important; margin: 0 !important; }
+        #mci-ebook-print-root .md-chapter > div { display: block !important; padding: 3.5mm 7mm 1mm !important; margin: 0 !important; break-inside: auto !important; page-break-inside: auto !important; }
+        #mci-ebook-print-root .md-chapter > footer { display: none !important; }
+        #mci-ebook-print-root .md-ending { display: block !important; margin-top: 7mm !important; padding: 7mm !important; break-before: auto !important; page-break-before: auto !important; }
+        #mci-ebook-print-root .md-chapter p, #mci-ebook-print-root .md-chapter li, #mci-ebook-print-root .md-chapter td, #mci-ebook-print-root .md-chapter th, #mci-ebook-print-root .md-chapter blockquote, #mci-ebook-print-root .md-chapter a, #mci-ebook-print-root .md-chapter strong { font-size: 10.5pt !important; line-height: 1.45 !important; letter-spacing: normal !important; }
+        #mci-ebook-print-root .md-chapter p { margin-top: 0 !important; margin-bottom: 2.5mm !important; orphans: 2; widows: 2; }
+        #mci-ebook-print-root .md-chapter h3 { font-size: 13pt !important; line-height: 1.25 !important; margin: 4mm 0 2mm !important; break-after: avoid !important; page-break-after: avoid !important; }
+        #mci-ebook-print-root .md-chapter ul, #mci-ebook-print-root .md-chapter ol { margin-top: 1mm !important; margin-bottom: 3mm !important; }
+        #mci-ebook-print-root .md-chapter li { margin-bottom: 1mm !important; }
+        #mci-ebook-print-root .md-chapter blockquote { padding: 3mm 4mm !important; margin: 3mm 0 !important; break-inside: avoid !important; page-break-inside: avoid !important; }
+        #mci-ebook-print-root table { width: 100% !important; border-collapse: collapse !important; table-layout: auto !important; }
+        #mci-ebook-print-root .md-chapter th, #mci-ebook-print-root .md-chapter td { padding: 1.5mm 2.5mm !important; }
+        #mci-ebook-print-root tr { break-inside: avoid !important; page-break-inside: avoid !important; }
+        #mci-ebook-print-root pre { white-space: pre-wrap !important; overflow: visible !important; break-inside: avoid !important; }
         #mci-ebook-print-root * { print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important; }
       }
     `}</style>
