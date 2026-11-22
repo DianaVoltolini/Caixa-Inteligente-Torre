@@ -249,7 +249,7 @@ export default function MarkdownEbookEditor({ onSwitchMode }: { onSwitchMode: ()
               {section.heading && <header className="relative overflow-hidden border-b border-[#DFE7F7] bg-[#F8FBFF] px-7 py-8 sm:px-10">
                 <div aria-hidden="true" className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-blue-100" />
                 <div className="relative">
-                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">{/cap[ií]tulo/i.test(section.heading) ? "Capítulo" : "Seção"} {String(index + 1).padStart(2, "0")}</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#002198]">Seção {section.heading.match(/^\s*(\d+)[.)]/)?.[1]?.padStart(2, "0") || String(index + 1).padStart(2, "0")}</p>
                   <h2 className="mt-3 break-words text-2xl font-black leading-tight text-[#0B1020] sm:text-3xl">{section.heading}</h2>
                 </div>
               </header>}
